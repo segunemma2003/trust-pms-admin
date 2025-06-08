@@ -1,4 +1,3 @@
-// src/pages/admin/InvitationsPage.tsx - Updated with full Supabase integration
 import { useState } from "react";
 import Layout from "@/components/layout/Layout";
 import Sidebar from "@/components/layout/Sidebar";
@@ -43,6 +42,7 @@ const InvitationsPage = () => {
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [resendingInvitationId, setResendingInvitationId] = useState<string | null>(null);
   const [inviteForm, setInviteForm] = useState({
     name: "",
     email: "",
@@ -93,10 +93,16 @@ const InvitationsPage = () => {
   };
 
   const handleResendInvitation = async (invitationId: string) => {
+    // Set the specific invitation as loading
+    setResendingInvitationId(invitationId);
+    
     try {
       await resendInvitation.mutateAsync(invitationId);
     } catch (error) {
       console.error("Error resending invitation:", error);
+    } finally {
+      // Clear the loading state regardless of success/failure
+      setResendingInvitationId(null);
     }
   };
 
@@ -238,7 +244,7 @@ const InvitationsPage = () => {
                     </p>
                   </div>
                   
-                  {/* <div className="space-y-2">
+                  <div className="space-y-2">
                     <Label htmlFor="message">Personal Message (Optional)</Label>
                     <Textarea
                       id="message"
@@ -248,7 +254,7 @@ const InvitationsPage = () => {
                       rows={3}
                     />
                   </div>
-                   */}
+                  
                   <DialogFooter>
                     <Button 
                       type="button" 
@@ -391,72 +397,76 @@ const InvitationsPage = () => {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredInvitations.map((invitation) => (
-                          <TableRow key={invitation.id}>
-                            <TableCell className="font-medium">
-                              <div className="flex items-center gap-2">
-                                <User className="h-4 w-4 text-airbnb-light" />
-                                {invitation.invitee_name || 'N/A'}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                <Mail className="h-4 w-4 text-airbnb-light" />
-                                {invitation.email}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className="capitalize">
-                                {invitation.invitation_type}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <Badge className={getStatusBadgeClass(invitation.status)}>
-                                {invitation.status.charAt(0).toUpperCase() + invitation.status.slice(1)}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-sm text-gray-600">
-                              {getInviterName(invitation)}
-                            </TableCell>
-                            <TableCell className="text-sm text-gray-500">
-                              {formatDate(invitation.created_at)}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex justify-end gap-2">
-                                {invitation.status === "pending" && (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => handleResendInvitation(invitation.id)}
-                                    disabled={resendInvitation.isPending}
-                                    className="hover:bg-airbnb-primary/10"
-                                  >
-                                    {resendInvitation.isPending ? (
-                                      <Loader2 className="h-3 w-3 animate-spin" />
-                                    ) : (
-                                      <>
-                                        <RotateCcw className="h-3 w-3 mr-1" />
-                                        Resend
-                                      </>
-                                    )}
-                                  </Button>
-                                )}
-                                {invitation.personal_message && (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => {
-                                      alert(`Personal message: "${invitation.personal_message}"`);
-                                    }}
-                                    className="text-blue-600 hover:text-blue-700"
-                                  >
-                                    View Message
-                                  </Button>
-                                )}
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                        {filteredInvitations.map((invitation) => {
+                          const isResending = resendingInvitationId === invitation.id;
+                          
+                          return (
+                            <TableRow key={invitation.id}>
+                              <TableCell className="font-medium">
+                                <div className="flex items-center gap-2">
+                                  <User className="h-4 w-4 text-airbnb-light" />
+                                  {invitation.invitee_name || 'N/A'}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <Mail className="h-4 w-4 text-airbnb-light" />
+                                  {invitation.email}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline" className="capitalize">
+                                  {invitation.invitation_type}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <Badge className={getStatusBadgeClass(invitation.status)}>
+                                  {invitation.status.charAt(0).toUpperCase() + invitation.status.slice(1)}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-sm text-gray-600">
+                                {getInviterName(invitation)}
+                              </TableCell>
+                              <TableCell className="text-sm text-gray-500">
+                                {formatDate(invitation.created_at)}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex justify-end gap-2">
+                                  {invitation.status === "pending" && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleResendInvitation(invitation.id)}
+                                      disabled={isResending}
+                                      className="hover:bg-airbnb-primary/10"
+                                    >
+                                      {isResending ? (
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                      ) : (
+                                        <>
+                                          <RotateCcw className="h-3 w-3 mr-1" />
+                                          Resend
+                                        </>
+                                      )}
+                                    </Button>
+                                  )}
+                                  {invitation.personal_message && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => {
+                                        alert(`Personal message: "${invitation.personal_message}"`);
+                                      }}
+                                      className="text-blue-600 hover:text-blue-700"
+                                    >
+                                      View Message
+                                    </Button>
+                                  )}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
                       </TableBody>
                     </Table>
                   </div>

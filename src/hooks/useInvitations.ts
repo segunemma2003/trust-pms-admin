@@ -13,26 +13,50 @@ interface CreateInvitationData {
   personal_message?: string | null
 }
 
-// Generate UUID helper function
-const generateUUID = () => {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return crypto.randomUUID()
-  }
-  // Fallback UUID generator
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    const r = Math.random() * 16 | 0
-    const v = c == 'x' ? r : (r & 0x3 | 0x8)
-    return v.toString(16)
-  })
+// Define the expected metadata structure
+interface InvitationMetadata {
+  invited_by?: string
+  invitee_name?: string | null
+  created_at?: string
+  resent_by?: string
+  resent_at?: string
+  invitation_attempt?: number
+  [key: string]: any // Allow for additional properties
 }
 
-// Enhanced invitation creation hook
+// Type guard to check if metadata is an object
+const isMetadataObject = (metadata: any): metadata is InvitationMetadata => {
+  return metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+}
+
+// Helper to safely get metadata with defaults
+const getMetadata = (metadata: any): InvitationMetadata => {
+  if (isMetadataObject(metadata)) {
+    return metadata
+  }
+  return {}
+}
+
+
+const generateUUID = () => {
+          if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+            return generateUUID()
+          }
+          // Fallback UUID generator
+          return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            const r = Math.random() * 16 | 0
+            const v = c == 'x' ? r : (r & 0x3 | 0x8)
+            return v.toString(16)
+          })
+        }
+
+// Enhanced invitation creation with comprehensive validation
 export const useCreateInvitationWithEmail = () => {
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: async (data: CreateInvitationData) => {
-      console.log('🔧 Creating invitation with enhanced service:', data)
+      console.log('🔧 Creating invitation with enhanced validation:', data)
 
       // Get current user
       const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -40,8 +64,6 @@ export const useCreateInvitationWithEmail = () => {
       if (authError || !user) {
         throw new Error('You must be logged in to send invitations.')
       }
-
-      console.log('✅ User authenticated:', user.email)
 
       // Get user profile for inviter name
       const { data: userProfile } = await supabase
@@ -58,18 +80,62 @@ export const useCreateInvitationWithEmail = () => {
         throw new Error('Please enter a valid email address.')
       }
 
-      // Check if invitation already exists for this email
-      const { data: existingInvitation } = await supabase
-        .from('invitations')
-        .select('id, status')
-        .eq('email', data.email.toLowerCase().trim())
-        .eq('status', 'pending')
+      const cleanEmail = data.email.toLowerCase().trim()
+
+      // 🔍 ENHANCED VALIDATION 1: Check if user already exists in the system
+      console.log('🔍 Checking if user already exists...')
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('id, email, user_type, status')
+        .eq('email', cleanEmail)
         .single()
 
-      if (existingInvitation) {
-        throw new Error('A pending invitation already exists for this email address.')
+      if (existingUser) {
+        if (existingUser.user_type === data.invitation_type) {
+          throw new Error(`A ${data.invitation_type} with this email address already exists in the system.`)
+        } else {
+          throw new Error(`This email is already registered as a ${existingUser.user_type}. Users cannot have multiple account types.`)
+        }
       }
 
+      // 🔍 ENHANCED VALIDATION 2: Check for ANY existing invitations (not just pending)
+      console.log('🔍 Checking for existing invitations...')
+      const { data: existingInvitations } = await supabase
+        .from('invitations')
+        .select('id, status, invitation_type, created_at')
+        .eq('email', cleanEmail)
+        .order('created_at', { ascending: false })
+
+      if (existingInvitations && existingInvitations.length > 0) {
+        const latestInvitation = existingInvitations[0]
+        
+        // Check for pending invitations
+        if (latestInvitation.status === 'pending') {
+          throw new Error('A pending invitation already exists for this email address. Please resend the existing invitation instead.')
+        }
+        
+        // Check for recently declined invitations (within last 30 days)
+        const thirtyDaysAgo = new Date()
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+        const invitationDate = new Date(latestInvitation.created_at)
+        
+        if (latestInvitation.status === 'declined' && invitationDate > thirtyDaysAgo) {
+          throw new Error('This person recently declined an invitation. Please wait before sending another invitation.')
+        }
+        
+        // Check for accepted invitations
+        if (latestInvitation.status === 'accepted') {
+          throw new Error('This person has already accepted an invitation but may not have completed registration. Please check the user list.')
+        }
+        
+        // Check for different invitation type
+        if (latestInvitation.invitation_type !== data.invitation_type) {
+          throw new Error(`This email was previously invited as a ${latestInvitation.invitation_type}. Please ensure you're sending the correct invitation type.`)
+        }
+      }
+
+
+      
       // Generate secure invitation token
       const invitationToken = generateUUID()
       
@@ -83,7 +149,7 @@ export const useCreateInvitationWithEmail = () => {
       const { data: invitation, error: invitationError } = await supabase
         .from('invitations')
         .insert({
-          email: data.email.toLowerCase().trim(),
+          email: cleanEmail,
           invitee_name: data.invitee_name?.trim() || null,
           invitation_type: data.invitation_type,
           invited_by: user.id,
@@ -102,21 +168,24 @@ export const useCreateInvitationWithEmail = () => {
 
       console.log('✅ Invitation created successfully:', invitation.id)
 
-      // Create onboarding token
+      // Create onboarding token with properly typed metadata
       console.log('🔧 Creating onboarding token...')
+      const tokenMetadata: InvitationMetadata = {
+        invited_by: user.id,
+        invitee_name: data.invitee_name,
+        created_at: new Date().toISOString(),
+        invitation_attempt: 1 // Track first attempt
+      }
+
       const { error: tokenError } = await supabase
         .from('onboarding_tokens')
         .insert({
-          email: data.email.toLowerCase().trim(),
+          email: cleanEmail,
           token: invitationToken,
           user_type: data.invitation_type,
           invitation_id: invitation.id,
           expires_at: expiresAt.toISOString(),
-          metadata: {
-            invited_by: user.id,
-            invitee_name: data.invitee_name,
-            created_at: new Date().toISOString()
-          }
+          metadata: tokenMetadata
         })
 
       if (tokenError) {
@@ -133,9 +202,9 @@ export const useCreateInvitationWithEmail = () => {
 
       console.log('✅ Onboarding token created successfully')
 
-      // Send email using enhanced service with fallbacks
-      console.log('📧 Sending invitation email with enhanced service...')
-      const emailResult = await emailService.sendInvitationEmail({
+      // Send FIRST-TIME invitation email
+      console.log('📧 Sending first-time invitation email...')
+      const emailResult = await emailService.sendFirstTimeInvitationEmail({
         email: data.email,
         inviteeName: data.invitee_name || 'there',
         invitationType: data.invitation_type,
@@ -183,13 +252,13 @@ export const useCreateInvitationWithEmail = () => {
   })
 }
 
-// Enhanced resend invitation hook
+// Enhanced resend invitation with reminder email
 export const useResendInvitation = () => {
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: async (invitationId: string) => {
-      console.log('🔄 Resending invitation with enhanced service:', invitationId)
+      console.log('🔄 Resending invitation with reminder email:', invitationId)
       
       // Get current user
       const { data: { user } } = await supabase.auth.getUser()
@@ -224,69 +293,42 @@ export const useResendInvitation = () => {
 
       console.log('✅ Found invitation:', invitation.email)
 
-      // Get or create onboarding token
+      // Get existing onboarding token to check attempt count
+      const { data: existingToken } = await supabase
+        .from('onboarding_tokens')
+        .select('*')
+        .eq('invitation_id', invitationId)
+        .single()
+
       let invitationToken = invitation.invitation_token
+      let attemptCount = 1
 
-      if (!invitationToken) {
-        console.log('🔧 Creating new onboarding token for resend...')
+      if (existingToken) {
+        // Safely get metadata
+        const currentMetadata = getMetadata(existingToken.metadata)
+        attemptCount = (currentMetadata.invitation_attempt || 1) + 1
         
-        invitationToken = generateUUID()
-        const expiresAt = new Date()
-        expiresAt.setDate(expiresAt.getDate() + 7)
-
-        const { error: createTokenError } = await supabase
-          .from('onboarding_tokens')
-          .insert({
-            email: invitation.email,
-            token: invitationToken,
-            user_type: invitation.invitation_type,
-            invitation_id: invitationId,
-            expires_at: expiresAt.toISOString(),
-            metadata: {
-              resent_by: user.id,
-              resent_at: new Date().toISOString()
-            }
-          })
-
-        if (createTokenError) {
-          console.error('❌ Error creating new token:', createTokenError)
-          throw new Error('Failed to create invitation token')
-        }
-
-        // Update invitation with new token
-        await supabase
-          .from('invitations')
-          .update({ 
-            invitation_token: invitationToken,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', invitationId)
-
-        console.log('✅ New token created and invitation updated')
-      } else {
-        // Check if existing token is still valid
-        const { data: tokenData } = await supabase
-          .from('onboarding_tokens')
-          .select('expires_at')
-          .eq('token', invitationToken)
-          .single()
-
-        if (tokenData && new Date(tokenData.expires_at) < new Date()) {
+        // Check if token is expired, create new one
+        if (new Date(existingToken.expires_at) < new Date()) {
           console.log('🔧 Token expired, creating new one...')
-          // Token expired, create new one
           invitationToken = generateUUID()
           const expiresAt = new Date()
           expiresAt.setDate(expiresAt.getDate() + 7)
+
+          // Create updated metadata
+          const updatedMetadata: InvitationMetadata = {
+            ...currentMetadata,
+            resent_by: user.id,
+            resent_at: new Date().toISOString(),
+            invitation_attempt: attemptCount
+          }
 
           await supabase
             .from('onboarding_tokens')
             .update({
               token: invitationToken,
               expires_at: expiresAt.toISOString(),
-              metadata: {
-                resent_by: user.id,
-                resent_at: new Date().toISOString()
-              }
+              metadata: updatedMetadata
             })
             .eq('invitation_id', invitationId)
 
@@ -297,39 +339,56 @@ export const useResendInvitation = () => {
               updated_at: new Date().toISOString()
             })
             .eq('id', invitationId)
+        } else {
+          // Update attempt count on existing token
+          const updatedMetadata: InvitationMetadata = {
+            ...currentMetadata,
+            resent_by: user.id,
+            resent_at: new Date().toISOString(),
+            invitation_attempt: attemptCount
+          }
+
+          await supabase
+            .from('onboarding_tokens')
+            .update({
+              metadata: updatedMetadata
+            })
+            .eq('invitation_id', invitationId)
         }
       }
 
-      // Send email using enhanced service
-      console.log('📧 Resending email with enhanced service...')
-      const emailResult = await emailService.sendInvitationEmail({
+      // Send REMINDER email (different from first-time invitation)
+      console.log('📧 Sending reminder email...')
+      const emailResult = await emailService.sendReminderInvitationEmail({
         email: invitation.email,
         inviteeName: invitation.invitee_name || 'there',
         invitationType: invitation.invitation_type,
         personalMessage: invitation.personal_message,
         invitationToken: invitationToken,
-        inviterName: inviterName
+        inviterName: inviterName,
+        attemptCount: attemptCount
       })
 
       if (!emailResult.success && !emailResult.demo) {
         throw new Error(`Failed to resend invitation email via ${emailResult.method}`)
       }
 
-      console.log('✅ Invitation resent successfully via', emailResult.method)
+      console.log('✅ Reminder invitation sent successfully via', emailResult.method)
       return { 
         success: true, 
         demo: emailResult.demo,
-        method: emailResult.method 
+        method: emailResult.method,
+        attemptCount: attemptCount
       }
     },
     onSuccess: (result) => {
       if (result.demo) {
-        toast.success('Demo invitation resent!', {
-          description: `Check the browser console for the simulated email content. Used ${result.method} method.`
+        toast.success('Demo reminder sent!', {
+          description: `Check the browser console for the simulated reminder email (attempt #${result.attemptCount}). Used ${result.method} method.`
         })
       } else {
-        toast.success('Invitation resent successfully!', {
-          description: `New invitation email sent via ${result.method}.`
+        toast.success('Reminder sent successfully!', {
+          description: `Reminder email sent via ${result.method} .`
         })
       }
       queryClient.invalidateQueries({ queryKey: ['invitations'] })
