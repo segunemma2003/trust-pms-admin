@@ -5,21 +5,11 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
-import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
-import Login from "./pages/auth/Login";
-import AdminLogin from "./pages/auth/AdminLogin";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import InvitationsPage from "./pages/admin/InvitationsPage";
 import ManageProperties from "./pages/admin/ManageProperties";
 import PaymentRequests from "./pages/admin/PaymentRequests";
-import OwnerDashboard from "./pages/owner/OwnerDashboard";
-import TrustLevels from "./pages/owner/TrustLevels";
-import SuggestProperty from "./pages/owner/SuggestProperty";
-import ManageNetwork from "./pages/owner/ManageNetwork";
-import Payments from "./pages/owner/Payments";
-import PropertyDetails from "./pages/property/PropertyDetails";
-// New imports for admin routes
 import ManageOwners from "./pages/admin/ManageOwners";
 import UserManagement from "./pages/admin/UserManagement";
 import Reports from "./pages/admin/Reports";
@@ -28,29 +18,7 @@ import AllPropertiesAdmin from "./pages/admin/AllProperties";
 import SuggestedProperties from "./pages/admin/SuggestedProperties";
 import AdminPropertyDetails from "./pages/admin/PropertyDetails";
 import FundRequests from "./pages/admin/FundRequests";
-// New imports for owner routes
-import PropertiesPage from "./pages/owner/PropertiesPage";
-import BookingsPage from "./pages/owner/BookingsPage";
-import SettingsPage from "./pages/owner/SettingsPage";
-// Onboarding imports
-import OwnerOnboarding from "./pages/onboarding/OwnerOnboarding";
-import UserOnboarding from "./pages/onboarding/UserOnboarding";
-// User routes
-import Profile from "./pages/user/Profile";
-import UserSettings from "./pages/user/Settings";
-import InvitationResponse from "./pages/invitation/InvitationResponse";
-// New page imports
-import ContactAdmin from "./pages/ContactAdmin";
-import About from "./pages/About";
-import Careers from "./pages/Careers";
-import Press from "./pages/Press";
-import Policies from "./pages/Policies";
-import TermsOfService from "./pages/TermsOfService";
-import PrivacyPolicy from "./pages/PrivacyPolicy";
-import CookiePolicy from "./pages/CookiePolicy";
-import AllProperties from "./pages/AllProperties";
-import FAQ from "./pages/FAQ";
-import TrustSafety from "./pages/TrustSafety";
+import AdminLogin from "./pages/auth/AdminLogin";
 
 // Scroll to top component
 const ScrollToTop = () => {
@@ -68,43 +36,10 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
-      // For anonymous users, use shorter stale times
       staleTime: 5 * 60 * 1000, // 5 minutes
     },
   },
 });
-
-// Protected Route Component with Anonymous User Support
-const ProtectedRoute = ({ children, allowedRoles }: { 
-  children: React.ReactNode; 
-  allowedRoles?: ( 'admin')[] 
-}) => {
-  const { user, userProfile, loading, isAnonymous } = useAuth();
-  
-  // IMPORTANT: Always show loading state while auth is loading
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-airbnb-primary"></div>
-      </div>
-    );
-  }
-  
-  // Only redirect to login if we're certain there's no user AND we're not loading
-  if (!loading && (!user || !userProfile)) {
-    return <Navigate to="/login" replace />;
-  }
-  
-    if (userProfile.user_type == "admin") {
-     
-        return <Navigate to="/admin" replace />;
-    }
-  
-  // If we get here, user has access
-  return <>{children}</>;
-};
-
-
 
 // Admin Protected Route Component
 const AdminProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -121,12 +56,12 @@ const AdminProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   console.log('AdminProtectedRoute:', { user: !!user, userProfile, userType: userProfile?.user_type });
   
   if (!user || !userProfile) {
-    console.log('No user/profile, redirecting to admin login');
+    console.log('No user/profile, redirecting to login');
     return <Navigate to="/login" replace />;
   }
   
   if (userProfile.user_type !== 'admin') {
-    console.log('Non-admin user accessing admin route, redirecting to admin login');
+    console.log('Non-admin user accessing admin route, redirecting to login');
     return <Navigate to="/login" replace />;
   }
   
@@ -137,7 +72,7 @@ const AdminProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 // Loading component
 const AppLoading = () => (
   <div className="min-h-screen flex items-center justify-center">
-    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-airbnb-primary"></div>
+    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600"></div>
   </div>
 );
 
@@ -155,7 +90,7 @@ const AppRoutes = () => {
         {/* Public Routes */}
         <Route path="/login" element={<AdminLogin />} />
 
-
+        {/* Default route - redirect to admin dashboard */}
         <Route path="/" element={
           <AdminProtectedRoute>
             <AdminDashboard />
@@ -223,6 +158,7 @@ const AppRoutes = () => {
             <FundRequests />
           </AdminProtectedRoute>
         } />
+        
         {/* Catch-all route */}
         <Route path="*" element={<NotFound />} />
       </Routes>

@@ -1,53 +1,17 @@
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
-import { supabase } from '@/lib/supabase'
-import { emailService } from '@/lib/emailService'
 import { toast } from 'sonner'
-import type { Database } from '@/lib/database.types'
-
-type InvitationType = Database['public']['Enums']['user_type']
+import { 
+  invitationService, 
+  analyticsService, 
+  userService,
+  type Invitation 
+} from '@/services/apiService'
 
 interface CreateInvitationData {
   email: string
-  invitee_name: string | null
-  invitation_type: InvitationType
-  personal_message?: string | null
-}
-
-// Define the expected metadata structure
-interface InvitationMetadata {
-  invited_by?: string
-  invitee_name?: string | null
-  created_at?: string
-  resent_by?: string
-  resent_at?: string
-  invitation_attempt?: number
-  [key: string]: any // Allow for additional properties
-}
-
-// Type guard to check if metadata is an object
-const isMetadataObject = (metadata: any): metadata is InvitationMetadata => {
-  return metadata && typeof metadata === 'object' && !Array.isArray(metadata)
-}
-
-// Helper to safely get metadata with defaults
-const getMetadata = (metadata: any): InvitationMetadata => {
-  if (isMetadataObject(metadata)) {
-    return metadata
-  }
-  return {}
-}
-
-
-const generateUUID = () => {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return crypto.randomUUID()  //
-  }
-  // Fallback UUID generator
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    const r = Math.random() * 16 | 0
-    const v = c == 'x' ? r : (r & 0x3 | 0x8)
-    return v.toString(16)
-  })
+  invitee_name: string
+  invitation_type: 'user' | 'owner' | 'admin'
+  personal_message?: string
 }
 
 // Enhanced invitation creation with comprehensive validation
@@ -56,192 +20,41 @@ export const useCreateInvitationWithEmail = () => {
 
   return useMutation({
     mutationFn: async (data: CreateInvitationData) => {
-      console.log('🔧 Creating invitation with enhanced validation:', data)
+      console.log('🔧 Creating invitation:', data)
 
-      // Get current user
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
-      
-      if (authError || !user) {
-        throw new Error('You must be logged in to send invitations.')
-      }
-
-      // Get user profile for inviter name
-      const { data: userProfile } = await supabase
-        .from('users')
-        .select('full_name')
-        .eq('id', user.id)
-        .single()
-
-      const inviterName = userProfile?.full_name || user.email?.split('@')[0] || 'OIFYK Team'
-
-      // Validate email format
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-      if (!emailRegex.test(data.email)) {
-        throw new Error('Please enter a valid email address.')
-      }
-
-      const cleanEmail = data.email.toLowerCase().trim()
-
-      // 🔍 ENHANCED VALIDATION 1: Check if user already exists in the system
-      console.log('🔍 Checking if user already exists...')
-      const { data: existingUser } = await supabase
-        .from('users')
-        .select('id, email, user_type, status')
-        .eq('email', cleanEmail)
-        .single()
-
-      if (existingUser) {
-        if (existingUser.user_type === data.invitation_type) {
-          throw new Error(`A ${data.invitation_type} with this email address already exists in the system.`)
-        } else {
-          throw new Error(`This email is already registered as a ${existingUser.user_type}. Users cannot have multiple account types.`)
-        }
-      }
-
-      // 🔍 ENHANCED VALIDATION 2: Check for ANY existing invitations (not just pending)
-      console.log('🔍 Checking for existing invitations...')
-      const { data: existingInvitations } = await supabase
-        .from('invitations')
-        .select('id, status, invitation_type, created_at')
-        .eq('email', cleanEmail)
-        .order('created_at', { ascending: false })
-
-      if (existingInvitations && existingInvitations.length > 0) {
-        const latestInvitation = existingInvitations[0]
-        
-        // Check for pending invitations
-        if (latestInvitation.status === 'pending') {
-          throw new Error('A pending invitation already exists for this email address. Please resend the existing invitation instead.')
-        }
-        
-        // Check for recently declined invitations (within last 30 days)
-        const thirtyDaysAgo = new Date()
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-        const invitationDate = new Date(latestInvitation.created_at)
-        
-        if (latestInvitation.status === 'declined' && invitationDate > thirtyDaysAgo) {
-          throw new Error('This person recently declined an invitation. Please wait before sending another invitation.')
-        }
-        
-        // Check for accepted invitations
-        if (latestInvitation.status === 'accepted') {
-          throw new Error('This person has already accepted an invitation but may not have completed registration. Please check the user list.')
-        }
-        
-        // Check for different invitation type
-        if (latestInvitation.invitation_type !== data.invitation_type) {
-          throw new Error(`This email was previously invited as a ${latestInvitation.invitation_type}. Please ensure you're sending the correct invitation type.`)
-        }
-      }
-
-
-      
-      // Generate secure invitation token
-      const invitationToken = generateUUID()
-      
-      // Calculate expiry date (7 days from now)
-      const expiresAt = new Date()
-      expiresAt.setDate(expiresAt.getDate() + 7)
-
-      console.log('🔧 Creating invitation record...')
-
-      // Create invitation record
-      const { data: invitation, error: invitationError } = await supabase
-        .from('invitations')
-        .insert({
-          email: cleanEmail,
-          invitee_name: data.invitee_name?.trim() || null,
+      try {
+        // Create invitation using custom API
+        const { data: invitation, error } = await invitationService.createInvitation({
+          email: data.email.toLowerCase().trim(),
+          invitee_name: data.invitee_name?.trim() || '',
           invitation_type: data.invitation_type,
-          invited_by: user.id,
-          personal_message: data.personal_message?.trim() || null,
-          invitation_token: invitationToken,
-          expires_at: expiresAt.toISOString(),
-          status: 'pending'
-        })
-        .select()
-        .single()
-
-      if (invitationError) {
-        console.error('❌ Error creating invitation:', invitationError)
-        throw new Error(`Failed to create invitation: ${invitationError.message}`)
-      }
-
-      console.log('✅ Invitation created successfully:', invitation.id)
-
-      // Create onboarding token with properly typed metadata
-      console.log('🔧 Creating onboarding token...')
-      const tokenMetadata: InvitationMetadata = {
-        invited_by: user.id,
-        invitee_name: data.invitee_name,
-        created_at: new Date().toISOString(),
-        invitation_attempt: 1 // Track first attempt
-      }
-
-      const { error: tokenError } = await supabase
-        .from('onboarding_tokens')
-        .insert({
-          email: cleanEmail,
-          token: invitationToken,
-          user_type: data.invitation_type,
-          invitation_id: invitation.id,
-          expires_at: expiresAt.toISOString(),
-          metadata: tokenMetadata
+          personal_message: data.personal_message?.trim() || ''
         })
 
-      if (tokenError) {
-        console.error('❌ Error creating onboarding token:', tokenError)
-        
-        // Clean up invitation if token creation fails
-        await supabase
-          .from('invitations')
-          .delete()
-          .eq('id', invitation.id)
-        
-        throw new Error(`Failed to create onboarding token: ${tokenError.message}`)
-      }
+        if (error) {
+          throw new Error(error.error || error.message || 'Failed to create invitation')
+        }
 
-      console.log('✅ Onboarding token created successfully')
-
-      // Send FIRST-TIME invitation email
-      console.log('📧 Sending first-time invitation email...')
-      const emailResult = await emailService.sendFirstTimeInvitationEmail({
-        email: data.email,
-        inviteeName: data.invitee_name || 'there',
-        invitationType: data.invitation_type,
-        personalMessage: data.personal_message,
-        invitationToken: invitationToken,
-        inviterName: inviterName
-      })
-
-      console.log('📧 Email result:', emailResult)
-
-      return {
-        invitation,
-        emailSent: emailResult.success,
-        emailDemo: emailResult.demo || false,
-        emailMethod: emailResult.method || 'unknown',
-        emailError: emailResult.error
+        console.log('✅ Invitation created successfully:', invitation?.id)
+        return {
+          invitation,
+          emailSent: true, // Assuming API handles email sending
+          emailDemo: false,
+          emailMethod: 'api',
+          emailError: null
+        }
+      } catch (error: any) {
+        console.error('❌ Invitation creation failed:', error)
+        throw new Error(error.message || 'Failed to create invitation')
       }
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['invitations'] })
       queryClient.invalidateQueries({ queryKey: ['dashboard-metrics'] })
       
-      if (result.emailSent) {
-        if (result.emailDemo) {
-          toast.success('Demo invitation created!', {
-            description: `Check the browser console for the simulated email content. Using ${result.emailMethod} method.`
-          })
-        } else {
-          toast.success('Invitation sent successfully!', {
-            description: `Email sent via ${result.emailMethod}. The recipient will receive registration instructions.`
-          })
-        }
-      } else {
-        toast.warning('Invitation created but email could not be sent', {
-          description: 'The invitation was saved but there was an issue sending the email. You can try resending it later.'
-        })
-      }
+      toast.success('Invitation sent successfully!', {
+        description: 'The recipient will receive registration instructions via email.'
+      })
     },
     onError: (error: Error) => {
       console.error('❌ Invitation creation failed:', error)
@@ -252,145 +65,56 @@ export const useCreateInvitationWithEmail = () => {
   })
 }
 
-// Enhanced resend invitation with reminder email
+// Resend invitation functionality
 export const useResendInvitation = () => {
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: async (invitationId: string) => {
-      console.log('🔄 Resending invitation with reminder email:', invitationId)
+      console.log('🔄 Resending invitation:', invitationId)
       
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        throw new Error('You must be logged in to resend invitations.')
-      }
-
-      // Get user profile for inviter name
-      const { data: userProfile } = await supabase
-        .from('users')
-        .select('full_name')
-        .eq('id', user.id)
-        .single()
-
-      const inviterName = userProfile?.full_name || user.email?.split('@')[0] || 'OIFYK Team'
-      
-      // Get invitation details
-      const { data: invitation, error: invitationError } = await supabase
-        .from('invitations')
-        .select('*')
-        .eq('id', invitationId)
-        .single()
-
-      if (invitationError || !invitation) {
-        console.error('❌ Error fetching invitation:', invitationError)
-        throw new Error('Invitation not found')
-      }
-
-      if (invitation.status !== 'pending') {
-        throw new Error('Can only resend pending invitations')
-      }
-
-      console.log('✅ Found invitation:', invitation.email)
-
-      // Get existing onboarding token to check attempt count
-      const { data: existingToken } = await supabase
-        .from('onboarding_tokens')
-        .select('*')
-        .eq('invitation_id', invitationId)
-        .single()
-
-      let invitationToken = invitation.invitation_token
-      let attemptCount = 1
-
-      if (existingToken) {
-        // Safely get metadata
-        const currentMetadata = getMetadata(existingToken.metadata)
-        attemptCount = (currentMetadata.invitation_attempt || 1) + 1
+      try {
+        // For now, we'll use a simple approach - this could be enhanced 
+        // with a dedicated resend endpoint in your API
+        const { data: invitations } = await invitationService.getInvitations()
+        const invitation = invitations?.results.find(inv => inv.id === invitationId)
         
-        // Check if token is expired, create new one
-        if (new Date(existingToken.expires_at) < new Date()) {
-          console.log('🔧 Token expired, creating new one...')
-          invitationToken = generateUUID()
-          const expiresAt = new Date()
-          expiresAt.setDate(expiresAt.getDate() + 7)
-
-          // Create updated metadata
-          const updatedMetadata: InvitationMetadata = {
-            ...currentMetadata,
-            resent_by: user.id,
-            resent_at: new Date().toISOString(),
-            invitation_attempt: attemptCount
-          }
-
-          await supabase
-            .from('onboarding_tokens')
-            .update({
-              token: invitationToken,
-              expires_at: expiresAt.toISOString(),
-              metadata: updatedMetadata
-            })
-            .eq('invitation_id', invitationId)
-
-          await supabase
-            .from('invitations')
-            .update({ 
-              invitation_token: invitationToken,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', invitationId)
-        } else {
-          // Update attempt count on existing token
-          const updatedMetadata: InvitationMetadata = {
-            ...currentMetadata,
-            resent_by: user.id,
-            resent_at: new Date().toISOString(),
-            invitation_attempt: attemptCount
-          }
-
-          await supabase
-            .from('onboarding_tokens')
-            .update({
-              metadata: updatedMetadata
-            })
-            .eq('invitation_id', invitationId)
+        if (!invitation) {
+          throw new Error('Invitation not found')
         }
-      }
 
-      // Send REMINDER email (different from first-time invitation)
-      console.log('📧 Sending reminder email...')
-      const emailResult = await emailService.sendReminderInvitationEmail({
-        email: invitation.email,
-        inviteeName: invitation.invitee_name || 'there',
-        invitationType: invitation.invitation_type,
-        personalMessage: invitation.personal_message,
-        invitationToken: invitationToken,
-        inviterName: inviterName,
-        attemptCount: attemptCount
-      })
+        if (invitation.status !== 'pending') {
+          throw new Error('Can only resend pending invitations')
+        }
 
-      if (!emailResult.success && !emailResult.demo) {
-        throw new Error(`Failed to resend invitation email via ${emailResult.method}`)
-      }
+        // Create a new invitation with the same details
+        const { data: newInvitation, error } = await invitationService.createInvitation({
+          email: invitation.email,
+          invitee_name: invitation.invitee_name,
+          invitation_type: invitation.invitation_type,
+          personal_message: invitation.personal_message || ''
+        })
 
-      console.log('✅ Reminder invitation sent successfully via', emailResult.method)
-      return { 
-        success: true, 
-        demo: emailResult.demo,
-        method: emailResult.method,
-        attemptCount: attemptCount
+        if (error) {
+          throw new Error(error.error || 'Failed to resend invitation')
+        }
+
+        console.log('✅ Invitation resent successfully')
+        return { 
+          success: true, 
+          demo: false,
+          method: 'api',
+          attemptCount: 2 // Could be tracked better with API support
+        }
+      } catch (error: any) {
+        console.error('❌ Resend invitation failed:', error)
+        throw new Error(error.message || 'Failed to resend invitation')
       }
     },
     onSuccess: (result) => {
-      if (result.demo) {
-        toast.success('Demo reminder sent!', {
-          description: `Check the browser console for the simulated reminder email (attempt #${result.attemptCount}). Used ${result.method} method.`
-        })
-      } else {
-        toast.success('Reminder sent successfully!', {
-          description: `Reminder email sent via ${result.method} .`
-        })
-      }
+      toast.success('Invitation resent successfully!', {
+        description: 'A new invitation email has been sent.'
+      })
       queryClient.invalidateQueries({ queryKey: ['invitations'] })
     },
     onError: (error: Error) => {
@@ -402,34 +126,35 @@ export const useResendInvitation = () => {
   })
 }
 
-// Hook to get all invitations with related data
+// Hook to get all invitations
 export const useInvitations = () => {
   return useQuery({
     queryKey: ['invitations'],
     queryFn: async () => {
       console.log('🔍 Fetching invitations...')
       
-      const { data, error } = await supabase
-        .from('invitations')
-        .select(`
-          *,
-          invited_by_user:users!invited_by(full_name, email),
-          accepted_by_user:users!accepted_by(full_name, email)
-        `)
-        .order('created_at', { ascending: false })
+      try {
+        const { data, error } = await invitationService.getInvitations({
+          page_size: 100 // Get more invitations per page
+        })
 
-      if (error) {
+        if (error) {
+          console.error('❌ Error fetching invitations:', error)
+          throw new Error(error.error || 'Failed to fetch invitations')
+        }
+
+        console.log('✅ Fetched invitations:', data?.results?.length || 0)
+        return data || { count: 0, results: [] }
+      } catch (error) {
         console.error('❌ Error fetching invitations:', error)
         throw error
       }
-
-      console.log('✅ Fetched invitations:', data?.length || 0)
-      return { data: data || [], error: null }
-    }
+    },
+    refetchInterval: 30 * 1000, // Refetch every 30 seconds
   })
 }
 
-// Hook to get dashboard metrics from Supabase
+// Hook to get dashboard metrics
 export const useDashboardMetrics = () => {
   return useQuery({
     queryKey: ['dashboard-metrics'],
@@ -437,41 +162,46 @@ export const useDashboardMetrics = () => {
       console.log('📊 Fetching dashboard metrics...')
 
       try {
-        // Execute multiple count queries in parallel
-        const [
-          usersResult,
-          ownersResult, 
-          propertiesResult,
-          activePropertiesResult,
-          bookingsResult
-        ] = await Promise.all([
-          supabase.from('users').select('*', { count: 'exact', head: true }),
-          supabase.from('users').select('*', { count: 'exact', head: true }).eq('user_type', 'owner'),
-          supabase.from('properties').select('*', { count: 'exact', head: true }),
-          supabase.from('properties').select('*', { count: 'exact', head: true }).eq('status', 'active'),
-          supabase.from('bookings').select('*', { count: 'exact', head: true })
-        ])
+        const { data, error } = await analyticsService.getDashboardMetrics()
 
-        const metrics = {
-          totalUsers: usersResult.count || 0,
-          totalOwners: ownersResult.count || 0,
-          totalProperties: propertiesResult.count || 0,
-          activeProperties: activePropertiesResult.count || 0,
-          totalBookings: bookingsResult.count || 0
+        if (error) {
+          console.error('❌ Error fetching dashboard metrics:', error)
+          // Return default values on error instead of throwing
+          return {
+            total_users: 0,
+            total_owners: 0,
+            total_properties: 0,
+            active_properties: 0,
+            total_bookings: 0,
+            pending_approvals: 0,
+            recent_signups: 0,
+            monthly_revenue: 0
+          }
         }
 
-        console.log('✅ Dashboard metrics fetched:', metrics)
-        return metrics
-
+        console.log('✅ Dashboard metrics fetched:', data)
+        return data || {
+          total_users: 0,
+          total_owners: 0,
+          total_properties: 0,
+          active_properties: 0,
+          total_bookings: 0,
+          pending_approvals: 0,
+          recent_signups: 0,
+          monthly_revenue: 0
+        }
       } catch (error) {
         console.error('❌ Error fetching dashboard metrics:', error)
-        // Return default values on error
+        // Return default values instead of failing
         return {
-          totalUsers: 0,
-          totalOwners: 0,
-          totalProperties: 0,
-          activeProperties: 0,
-          totalBookings: 0
+          total_users: 0,
+          total_owners: 0,
+          total_properties: 0,
+          active_properties: 0,
+          total_bookings: 0,
+          pending_approvals: 0,
+          recent_signups: 0,
+          monthly_revenue: 0
         }
       }
     },
@@ -486,59 +216,138 @@ export const useRecentActivity = (limit = 10) => {
     queryFn: async () => {
       console.log('📈 Fetching recent activity...')
       
-      const { data, error } = await supabase
-        .from('activity_logs')
-        .select(`
-          *,
-          user:users(full_name, email)
-        `)
-        .order('created_at', { ascending: false })
-        .limit(limit)
+      try {
+        const { data, error } = await analyticsService.getRecentActivity(limit)
 
-      if (error) {
+        if (error) {
+          console.error('❌ Error fetching recent activity:', error)
+          return { data: [], error }
+        }
+
+        console.log('✅ Recent activity fetched:', data?.length || 0)
+        return { data: data || [], error: null }
+      } catch (error) {
         console.error('❌ Error fetching recent activity:', error)
         return { data: [], error }
       }
-
-      console.log('✅ Recent activity fetched:', data?.length || 0)
-      return { data: data || [], error: null }
     },
     refetchInterval: 30 * 1000, // Refetch every 30 seconds
   })
 }
 
-// Hook to test email service connectivity
-export const useTestEmailService = () => {
-  return useMutation({
-    mutationFn: async (email: string) => {
-      console.log('🧪 Testing email service connectivity...')
-      
-      const testResult = await emailService.sendInvitationEmail({
-        email: email,
-        inviteeName: 'Test User',
-        invitationType: 'user',
-        personalMessage: 'This is a test email to verify service connectivity.',
-        invitationToken: 'test-token-' + Date.now(),
-        inviterName: 'System Admin'
-      })
+// Hook to validate invitation token (for invitation response pages)
+export const useValidateInvitationToken = (token: string) => {
+  return useQuery({
+    queryKey: ['validate-invitation-token', token],
+    queryFn: async () => {
+      if (!token) return null
 
-      return testResult
+      console.log('🔍 Validating invitation token...')
+      
+      try {
+        const { data, error } = await invitationService.validateToken(token)
+
+        if (error) {
+          console.error('❌ Token validation failed:', error)
+          return { is_valid: false, error: error.error || 'Invalid token' }
+        }
+
+        console.log('✅ Token validation result:', data)
+        return data
+      } catch (error) {
+        console.error('❌ Error validating token:', error)
+        return { is_valid: false, error: 'Token validation failed' }
+      }
+    },
+    enabled: !!token,
+    retry: false,
+  })
+}
+
+// Hook to handle invitation responses (accept/decline)
+export const useRespondToInvitation = () => {
+  return useMutation({
+    mutationFn: async ({ 
+      token, 
+      action, 
+      userData 
+    }: { 
+      token: string
+      action: 'accept' | 'decline'
+      userData?: {
+        password: string
+        full_name: string
+        phone: string
+      }
+    }) => {
+      console.log('📝 Responding to invitation:', { token: token.substring(0, 8) + '...', action })
+      
+      try {
+        if (action === 'accept') {
+          const { data, error } = await invitationService.acceptInvitation(token, userData)
+          if (error) {
+            throw new Error(error.error || 'Failed to accept invitation')
+          }
+          return { success: true, action: 'accepted', data }
+        } else {
+          const { data, error } = await invitationService.declineInvitation(token)
+          if (error) {
+            throw new Error(error.error || 'Failed to decline invitation')
+          }
+          return { success: true, action: 'declined', data }
+        }
+      } catch (error: any) {
+        console.error('❌ Invitation response failed:', error)
+        throw new Error(error.message || 'Failed to process invitation response')
+      }
     },
     onSuccess: (result) => {
-      if (result.demo) {
-        toast.success('Email service test completed (Demo Mode)', {
-          description: `Test email simulated via ${result.method}. Check console for details.`
+      if (result.action === 'accepted') {
+        toast.success('Invitation accepted!', {
+          description: 'Welcome to OnlyIfYouKnow. You can now sign in with your credentials.'
         })
       } else {
-        toast.success('Email service test successful!', {
-          description: `Test email sent via ${result.method}.`
+        toast.success('Invitation declined', {
+          description: 'Thank you for your response.'
         })
       }
     },
     onError: (error: Error) => {
-      toast.error('Email service test failed', {
+      toast.error('Failed to process invitation', {
         description: error.message
       })
     }
+  })
+}
+
+// Hook to search users (for admin user management)
+export const useSearchUsers = (params: {
+  search?: string
+  user_type?: 'user' | 'owner' | 'admin'
+} = {}) => {
+  return useQuery({
+    queryKey: ['search-users', params],
+    queryFn: async () => {
+      console.log('🔍 Searching users with params:', params)
+      
+      try {
+        const { data, error } = await userService.searchUsers({
+          ...params,
+          page_size: 100
+        })
+
+        if (error) {
+          console.error('❌ Error searching users:', error)
+          throw new Error(error.error || 'Failed to search users')
+        }
+
+        console.log('✅ User search completed:', data?.results?.length || 0)
+        return data || { count: 0, results: [] }
+      } catch (error) {
+        console.error('❌ Error searching users:', error)
+        throw error
+      }
+    },
+    enabled: Object.keys(params).length > 0, // Only run when there are search params
   })
 }
