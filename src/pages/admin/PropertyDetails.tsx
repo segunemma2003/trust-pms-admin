@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import Layout from "@/components/layout/Layout";
@@ -19,7 +18,6 @@ import {
   ExternalLink,
   Tag
 } from "lucide-react";
-import { mockProperties } from "@/data/mockData";
 
 // Component for image gallery with download buttons
 const ImageGallery = ({ images }: { images: string[] }) => {
@@ -62,38 +60,10 @@ const ImageGallery = ({ images }: { images: string[] }) => {
 
 const PropertyDetails = () => {
   const { id } = useParams<{ id: string }>();
-  const property = mockProperties.find(p => p.id === id);
   const [activeTab, setActiveTab] = useState("details");
   
-  if (!property) {
-    return (
-      <Layout userType="admin" hideFooter>
-        <div className="flex">
-          <Sidebar type="admin" />
-          <div className="flex-1 p-6">
-            <div className="text-center py-12">
-              <h2 className="text-2xl font-bold mb-2">Property Not Found</h2>
-              <p className="text-airbnb-light mb-4">
-                The property you're looking for doesn't exist or has been removed.
-              </p>
-              <Button asChild>
-                <Link to="/admin/properties">View All Properties</Link>
-              </Button>
-            </div>
-          </div>
-        </div>
-      </Layout>
-    );
-  }
-  
-  // Use default values for missing properties to avoid TypeScript errors
-  const propertyDescription = "This beautiful property offers a serene getaway with modern amenities and stunning views.";
-  const propertyType = "Villa";
-  const propertyMaxGuests = 6;
-  const propertyAmenities = ["WiFi", "Pool", "Kitchen", "Parking", "Air Conditioning"];
-  
   return (
-    <Layout userType="admin" hideFooter>
+    <Layout hideFooter>
       <div className="flex">
         <Sidebar type="admin" />
         
@@ -112,10 +82,10 @@ const PropertyDetails = () => {
             
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div>
-                <h1 className="text-2xl font-bold text-airbnb-dark">{property.title}</h1>
+                <h1 className="text-2xl font-bold text-airbnb-dark">Property Title</h1>
                 <p className="text-sm text-airbnb-light flex items-center mt-1">
                   <MapPin className="h-3.5 w-3.5 mr-1" />
-                  {property.location}
+                  Property Location
                 </p>
               </div>
               
@@ -140,7 +110,7 @@ const PropertyDetails = () => {
                 </div>
                 <div>
                   <p className="text-sm text-airbnb-light">Beds</p>
-                  <p className="text-lg font-medium">{property.beds}</p>
+                  <p className="text-lg font-medium">Beds Count</p>
                 </div>
               </CardContent>
             </Card>
@@ -152,7 +122,7 @@ const PropertyDetails = () => {
                 </div>
                 <div>
                   <p className="text-sm text-airbnb-light">Baths</p>
-                  <p className="text-lg font-medium">{property.baths}</p>
+                  <p className="text-lg font-medium">Baths Count</p>
                 </div>
               </CardContent>
             </Card>
@@ -164,7 +134,7 @@ const PropertyDetails = () => {
                 </div>
                 <div>
                   <p className="text-sm text-airbnb-light">Price</p>
-                  <p className="text-lg font-medium">${property.price}/night</p>
+                  <p className="text-lg font-medium">Price per night</p>
                 </div>
               </CardContent>
             </Card>
@@ -189,7 +159,7 @@ const PropertyDetails = () => {
                 <CardContent className="space-y-4">
                   <div>
                     <h3 className="font-medium mb-2">Description</h3>
-                    <p className="text-sm">{propertyDescription}</p>
+                    <p className="text-sm">This beautiful property offers a serene getaway with modern amenities and stunning views.</p>
                   </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -208,11 +178,11 @@ const PropertyDetails = () => {
                   <div>
                     <h3 className="font-medium mb-2">Amenities</h3>
                     <div className="flex flex-wrap gap-2">
-                      {propertyAmenities.map((amenity, index) => (
-                        <Badge key={index} variant="outline">
-                          {amenity}
-                        </Badge>
-                      ))}
+                      <Badge variant="outline">WiFi</Badge>
+                      <Badge variant="outline">Pool</Badge>
+                      <Badge variant="outline">Kitchen</Badge>
+                      <Badge variant="outline">Parking</Badge>
+                      <Badge variant="outline">Air Conditioning</Badge>
                     </div>
                   </div>
                   
@@ -220,11 +190,11 @@ const PropertyDetails = () => {
                     <h3 className="font-medium mb-2">Additional Information</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 text-sm">
                       <div className="text-airbnb-light">Property Type:</div>
-                      <div>{propertyType}</div>
+                      <div>Villa</div>
                       <div className="text-airbnb-light">Maximum Guests:</div>
-                      <div>{propertyMaxGuests}</div>
+                      <div>6</div>
                       <div className="text-airbnb-light">Beds24 ID:</div>
-                      <div>BD24-{Math.floor(1000 + Math.random() * 9000)}</div>
+                      <div>BD24-RandomID</div>
                     </div>
                   </div>
                 </CardContent>
@@ -240,7 +210,7 @@ const PropertyDetails = () => {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <ImageGallery images={property.images} />
+                  <ImageGallery images={["image1.jpg", "image2.jpg", "image3.jpg"]} />
                 </CardContent>
               </Card>
             </TabsContent>

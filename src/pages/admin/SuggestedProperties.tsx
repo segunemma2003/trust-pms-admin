@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Layout from "@/components/layout/Layout";
@@ -30,97 +29,6 @@ import {
   Upload
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-
-// Mock data for suggested properties
-const suggestedProperties = [
-  {
-    id: "1",
-    title: "Luxury Beach House",
-    owner: {
-      id: "o1",
-      name: "John Smith",
-      email: "john@example.com"
-    },
-    location: "Malibu, CA",
-    description: "Beautiful beach house with stunning ocean views, perfect for a relaxing getaway. Features include a spacious deck, modern kitchen, and direct beach access.",
-    price: 350,
-    beds: 4,
-    baths: 3,
-    guests: 8,
-    amenities: ["Pool", "Wi-Fi", "Kitchen", "Beach access", "BBQ", "Parking"],
-    images: [
-      "https://images.unsplash.com/photo-1499793983690-e29da59ef1c2?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80",
-      "https://images.unsplash.com/photo-1566073771259-6a8506099945?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80",
-      "https://images.unsplash.com/photo-1564013434775-f71db0030e1c?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80",
-      "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80"
-    ],
-    status: "pending",
-    submittedAt: "2025-05-10T14:30:00Z",
-    trustLevels: [
-      { name: "Family", discount: 25 },
-      { name: "Close Friends", discount: 20 },
-      { name: "Friends", discount: 15 },
-      { name: "Acquaintances", discount: 10 },
-      { name: "First Time", discount: 5 }
-    ]
-  },
-  {
-    id: "2",
-    title: "Mountain Retreat Cabin",
-    owner: {
-      id: "o2",
-      name: "Sarah Johnson",
-      email: "sarah@example.com"
-    },
-    location: "Aspen, CO",
-    description: "Cozy mountain cabin with spectacular views of the surrounding mountains. Perfect for skiing in winter or hiking in summer. Features a fireplace and rustic decor.",
-    price: 250,
-    beds: 2,
-    baths: 2,
-    guests: 4,
-    amenities: ["Fireplace", "Wi-Fi", "Kitchen", "Hiking trails", "Ski storage", "Hot tub"],
-    images: [
-      "https://images.unsplash.com/photo-1518780664697-55e3ad937233?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80",
-      "https://images.unsplash.com/photo-1542718610-a1d656d1884c?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80",
-      "https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80"
-    ],
-    status: "pending",
-    submittedAt: "2025-05-15T09:45:00Z",
-    trustLevels: [
-      { name: "Family", discount: 20 },
-      { name: "Friends", discount: 15 },
-      { name: "Acquaintances", discount: 10 }
-    ]
-  },
-  {
-    id: "3",
-    title: "Downtown Luxury Apartment",
-    owner: {
-      id: "o3",
-      name: "Michael Brown",
-      email: "michael@example.com"
-    },
-    location: "New York, NY",
-    description: "Modern luxury apartment in the heart of downtown. Walking distance to restaurants, shops, and attractions. Featuring high-end appliances and city views.",
-    price: 300,
-    beds: 2,
-    baths: 2,
-    guests: 4,
-    amenities: ["Gym", "Wi-Fi", "Kitchen", "Doorman", "Elevator", "Washer/Dryer"],
-    images: [
-      "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80",
-      "https://images.unsplash.com/photo-1554995207-c18c203602cb?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80",
-      "https://images.unsplash.com/photo-1493809842364-78817add7ffb?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80"
-    ],
-    status: "pending",
-    submittedAt: "2025-05-18T16:20:00Z",
-    trustLevels: [
-      { name: "VIP", discount: 30 },
-      { name: "Regular", discount: 15 },
-      { name: "New", discount: 5 }
-    ]
-  }
-];
 
 const SuggestedProperties = () => {
   const navigate = useNavigate();
@@ -194,7 +102,7 @@ const SuggestedProperties = () => {
   };
 
   return (
-    <Layout userType="admin" hideFooter>
+    <Layout hideFooter>
       <div className="flex">
         <Sidebar type="admin" />
         
@@ -209,92 +117,7 @@ const SuggestedProperties = () => {
           </div>
           
           <div className="grid grid-cols-1 gap-6">
-            {suggestedProperties.map((property) => (
-              <Card key={property.id} className="overflow-hidden">
-                <div className="flex flex-col md:flex-row">
-                  <div className="w-full md:w-64 h-48 md:h-auto">
-                    <img 
-                      src={property.images[0]} 
-                      alt={property.title} 
-                      className="w-full h-full object-cover" 
-                    />
-                  </div>
-                  
-                  <div className="flex-1 p-6">
-                    <div className="flex flex-col md:flex-row md:items-start md:justify-between">
-                      <div>
-                        <h3 className="text-xl font-bold">{property.title}</h3>
-                        <p className="text-sm text-airbnb-light flex items-center mt-1">
-                          <MapPin className="h-3.5 w-3.5 mr-1" />
-                          {property.location}
-                        </p>
-                      </div>
-                      <Badge className="mt-2 md:mt-0 bg-yellow-100 text-yellow-800 self-start">
-                        Pending Review
-                      </Badge>
-                    </div>
-                    
-                    <div className="flex flex-wrap gap-3 mt-3">
-                      <div className="flex items-center text-sm">
-                        <Bed className="h-4 w-4 mr-1 text-airbnb-light" />
-                        {property.beds} beds
-                      </div>
-                      <div className="flex items-center text-sm">
-                        <Bath className="h-4 w-4 mr-1 text-airbnb-light" />
-                        {property.baths} baths
-                      </div>
-                      <div className="flex items-center text-sm">
-                        <User className="h-4 w-4 mr-1 text-airbnb-light" />
-                        {property.guests} guests
-                      </div>
-                      <div className="text-sm font-medium">
-                        ${property.price}/night
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-2 mt-3 text-sm">
-                      <strong>Owner:</strong> {property.owner.name} ({property.owner.email})
-                    </div>
-                    
-                    <div className="line-clamp-2 text-sm mt-3">
-                      {property.description}
-                    </div>
-                    
-                    <div className="flex flex-wrap gap-2 mt-4">
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="flex items-center gap-1"
-                        onClick={() => handleViewProperty(property)}
-                      >
-                        <Eye className="h-4 w-4" />
-                        View Details
-                      </Button>
-                      
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="text-green-600 border-green-600 hover:bg-green-50"
-                        onClick={() => handleApproveDialog(property)}
-                      >
-                        <Check className="h-4 w-4 mr-1" />
-                        Approve
-                      </Button>
-                      
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="text-red-600 border-red-600 hover:bg-red-50"
-                        onClick={() => handleRejectDialog(property)}
-                      >
-                        <X className="h-4 w-4 mr-1" />
-                        Reject
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            ))}
+            {/* Placeholder for API-based fetching */}
           </div>
           
           {/* Property Detail Dialog */}

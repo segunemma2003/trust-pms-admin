@@ -8,8 +8,6 @@ import {
   MapPin, Search, Users, Shield, Calendar, ChevronDown, 
   ArrowRight, Minus, Plus, X 
 } from "lucide-react";
-import { mockProperties } from "@/data/mockData";
-import { Property } from "@/components/ui/property-card";
 import { Input } from "@/components/ui/input";
 import { 
   Popover, 
@@ -21,7 +19,7 @@ import { format } from "date-fns";
 
 const Index = () => {
   const [searchQuery, setSearchQuery] = useState("");
-  const [filteredProperties, setFilteredProperties] = useState<Property[]>(mockProperties);
+  const [filteredProperties, setFilteredProperties] = useState([]);
   const [date, setDate] = useState<Date>();
   const [endDate, setEndDate] = useState<Date>();
   const [adults, setAdults] = useState(1);
@@ -31,13 +29,7 @@ const Index = () => {
   // Filter properties when search query changes
   const handleSearch = (query: string) => {
     setSearchQuery(query);
-    const filtered = query 
-      ? mockProperties.filter(property => 
-          property.title.toLowerCase().includes(query.toLowerCase()) ||
-          property.location.toLowerCase().includes(query.toLowerCase())
-        )
-      : mockProperties;
-    setFilteredProperties(filtered);
+    // Implement the logic to filter properties based on the query
   };
 
   const increment = (setter: React.Dispatch<React.SetStateAction<number>>, value: number) => {
@@ -62,7 +54,7 @@ const Index = () => {
   };
   
   return (
-    <Layout userType="user">
+    <Layout>
       {/* Hero Section - Redesigned based on the image */}
       <section className="relative bg-white py-16 md:py-24 overflow-hidden animate-fade-in">
         <div className="max-w-7xl mx-auto px-4">

@@ -19,9 +19,8 @@ import { Shield, ArrowLeft, Eye, EyeOff, Loader2 } from "lucide-react";
 const AdminLogin = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
-  const { signIn, signInAnonymously, user, userProfile, loading } = useAuth();
+  const { signIn, user, userProfile, loading } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
-  const [demoLoading, setDemoLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -99,26 +98,6 @@ const AdminLogin = () => {
       setIsLoading(false);
     }
   };
-
-  const handleDemoLogin = async () => {
-    setDemoLoading(true);
-    try {
-      await signInAnonymously('admin');
-      toast({
-        title: "Demo admin access granted",
-        description: "You're now exploring as a demo administrator",
-      });
-      // Don't navigate here - let the useEffect handle it
-    } catch (error) {
-      toast({
-        title: "Demo failed",
-        description: "Failed to start admin demo mode. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setDemoLoading(false);
-    }
-  };
   
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 p-4">
@@ -186,7 +165,7 @@ const AdminLogin = () => {
             <CardFooter className="flex flex-col space-y-4">
               <Button 
                 className="w-full bg-red-600 hover:bg-red-700 text-white"
-                disabled={isLoading || demoLoading}
+                disabled={isLoading}
                 type="submit"
               >
                 {isLoading ? (
@@ -198,48 +177,6 @@ const AdminLogin = () => {
                   "Access Admin Portal"
                 )}
               </Button>
-
-              {/* Demo Mode Section */}
-              {/* <div className="w-full">
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-slate-600" />
-                  </div>
-                  <div className="relative flex justify-center text-xs">
-                    <span className="px-2 bg-slate-800 text-slate-400">Or</span>
-                  </div>
-                </div>
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full mt-4 bg-slate-700/30 border-slate-600 text-slate-300 hover:bg-slate-600/50 hover:text-white"
-                  onClick={handleDemoLogin}
-                  disabled={isLoading || demoLoading}
-                >
-                  {demoLoading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Loading Demo...
-                    </>
-                  ) : (
-                    <>
-                      <Shield className="mr-2 h-4 w-4" />
-                      Try Admin Demo
-                    </>
-                  )}
-                </Button>
-              </div> */}
-              
-              {/* <div className="text-center">
-                <Link 
-                  to="/" 
-                  className="text-sm text-slate-300 hover:text-white flex items-center justify-center gap-2 transition-colors"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                  Back to main site
-                </Link>
-              </div> */}
             </CardFooter>
           </form>
         </Card>

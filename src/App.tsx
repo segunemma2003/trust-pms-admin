@@ -17,7 +17,6 @@ import Settings from "./pages/admin/Settings";
 import AllPropertiesAdmin from "./pages/admin/AllProperties";
 import SuggestedProperties from "./pages/admin/SuggestedProperties";
 import AdminPropertyDetails from "./pages/admin/PropertyDetails";
-import FundRequests from "./pages/admin/FundRequests";
 import AdminLogin from "./pages/auth/AdminLogin";
 
 // Scroll to top component
@@ -153,12 +152,7 @@ const AppRoutes = () => {
             <AdminPropertyDetails />
           </AdminProtectedRoute>
         } />
-        <Route path="/admin/fund-requests" element={
-          <AdminProtectedRoute>
-            <FundRequests />
-          </AdminProtectedRoute>
-        } />
-        
+     
         {/* Catch-all route */}
         <Route path="*" element={<NotFound />} />
       </Routes>

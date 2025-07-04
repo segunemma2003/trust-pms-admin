@@ -1,5 +1,4 @@
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Layout from "@/components/layout/Layout";
 import Sidebar from "@/components/layout/Sidebar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,21 +21,39 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { mockUsers } from "@/data/mockData";
+import { useAuth } from "@/contexts/AuthContext";
 
 const UserManagement = () => {
   const [searchQuery, setSearchQuery] = useState("");
-  const [filteredUsers, setFilteredUsers] = useState(mockUsers);
+  const [filteredUsers, setFilteredUsers] = useState([]);
+  const { user } = useAuth();
+
+  useEffect(() => {
+    const fetchUsers = async () => {
+      const token = localStorage.getItem('access_token');
+      if (!token) return;
+      const response = await fetch(
+        `/api/users/search/?search=${encodeURIComponent(searchQuery)}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setFilteredUsers(data.results || []);
+      } else {
+        setFilteredUsers([]);
+      }
+    };
+    fetchUsers();
+  }, [searchQuery]);
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
-    const filtered = query 
-      ? mockUsers.filter(user => 
-          user.name.toLowerCase().includes(query.toLowerCase()) ||
-          user.email.toLowerCase().includes(query.toLowerCase())
-        )
-      : mockUsers;
-    setFilteredUsers(filtered);
+    // API search handled by useEffect
   };
 
   const handleInviteUser = () => {
@@ -44,7 +61,7 @@ const UserManagement = () => {
   };
 
   return (
-    <Layout userType="admin" hideFooter>
+    <Layout hideFooter>
       <div className="flex">
         <Sidebar type="admin" />
         
