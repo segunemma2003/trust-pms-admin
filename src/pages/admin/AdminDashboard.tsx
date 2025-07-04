@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import Layout from "@/components/layout/Layout";
 import Sidebar from "@/components/layout/Sidebar";
@@ -49,13 +49,7 @@ import {
   Pie,
   Cell,
 } from "recharts";
-import { 
-  useCreateInvitationWithEmail, 
-  useInvitations, 
-  useResendInvitation,
-  useDashboardMetrics,
-  useRecentActivity
-} from "@/hooks/useInvitations";
+import { useAuth } from "@/contexts/AuthContext";
 
 const AdminDashboard = () => {
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
@@ -66,41 +60,73 @@ const AdminDashboard = () => {
     message: ""
   });
 
-  // Use the updated hooks with real Supabase integration
-  const { data: metrics, isLoading: metricsLoading } = useDashboardMetrics();
-  const { data: recentActivity, isLoading: activityLoading } = useRecentActivity(5);
-  const { data: invitations, isLoading: invitationsLoading } = useInvitations();
-  const createInvitation = useCreateInvitationWithEmail();
-  const resendInvitation = useResendInvitation();
+  // Mock revenue data (you can replace this with real data from your analytics)
+  const mockRevenueData = [
+    { month: 'Jan', revenue: 12000 },
+    { month: 'Feb', revenue: 15000 },
+    { month: 'Mar', revenue: 18000 },
+    { month: 'Apr', revenue: 22000 },
+    { month: 'May', revenue: 25000 },
+  ];
+
+  // Local state and handlers for API-driven dashboard
+  const [metrics, setMetrics] = useState<any>(null);
+  const [recentActivity, setRecentActivity] = useState<any[]>([]);
+  const [invitations, setInvitations] = useState<any[]>([]);
+  const { user } = useAuth();
+
+  const pieData = [
+    { name: 'Owners', value: metrics?.totalOwners || 0 },
+    { name: 'Users', value: (metrics?.totalUsers || 0) - (metrics?.totalOwners || 0) }
+  ];
+  const COLORS = ['#FF5A5F', '#00A699'];
+
+  useEffect(() => {
+    const fetchDashboard = async () => {
+      const token = localStorage.getItem('access_token');
+      if (!token) return;
+      const [metricsRes, activityRes, invitationsRes] = await Promise.all([
+        fetch(`/api/analytics/dashboard_metrics/`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }),
+        fetch(`/api/analytics/recent_activity/?limit=5`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }),
+        fetch(`/api/invitations/`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+      ]);
+      if (metricsRes.ok) setMetrics(await metricsRes.json());
+      if (activityRes.ok) setRecentActivity((await activityRes.json()).results || []);
+      if (invitationsRes.ok) setInvitations((await invitationsRes.json()).results || []);
+    };
+    fetchDashboard();
+  }, []);
 
   const handleInviteSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Validate form
     if (!inviteForm.name.trim() || !inviteForm.email.trim()) {
-      return; // Error will be shown by the mutation
+      return;
     }
-
-    try {
-      await createInvitation.mutateAsync({
-        email: inviteForm.email.trim(),
-        invitee_name: inviteForm.name.trim(),
+    const token = localStorage.getItem('access_token');
+    if (!token) return;
+    const response = await fetch(`/api/invitations/`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: inviteForm.email,
+        invitee_name: inviteForm.name,
         invitation_type: inviteForm.invitationType,
-        personal_message: inviteForm.message.trim() || null
-      });
-      
-      // Reset form and close modal
-      setInviteForm({ 
-        name: "", 
-        email: "", 
-        invitationType: "owner",
-        message: "" 
-      });
+        personal_message: inviteForm.message
+      })
+    });
+    if (response.ok) {
       setIsInviteModalOpen(false);
-      
-    } catch (error: any) {
-      // Error is already handled by the mutation hook
-      console.error("Error sending invitation:", error);
+      setInviteForm({ name: '', email: '', invitationType: 'owner', message: '' });
+      // Optionally refetch invitations
     }
   };
 
@@ -112,36 +138,15 @@ const AdminDashboard = () => {
   };
 
   const handleResendInvitation = async (invitationId: string) => {
-    try {
-      await resendInvitation.mutateAsync(invitationId);
-    } catch (error) {
-      console.error("Error resending invitation:", error);
-    }
+    alert('Resend invitation is not implemented yet.');
   };
 
-  // Get recent invitations for display
-  const recentInvitations = invitations?.data?.slice(0, 3) || [];
-  const pendingInvitations = invitations?.data?.filter(inv => inv.status === 'pending') || [];
+  const recentInvitations = invitations.slice(0, 3);
+  const pendingInvitations = invitations.filter(inv => inv.status === 'pending');
 
-  // Prepare chart data
-  const pieData = [
-    { name: 'Owners', value: metrics?.totalOwners || 0 },
-    { name: 'Users', value: (metrics?.totalUsers || 0) - (metrics?.totalOwners || 0) }
-  ];
-  const COLORS = ['#FF5A5F', '#00A699'];
-
-  // Mock revenue data (you can replace this with real data from your analytics)
-  const mockRevenueData = [
-    { month: 'Jan', revenue: 12000 },
-    { month: 'Feb', revenue: 15000 },
-    { month: 'Mar', revenue: 18000 },
-    { month: 'Apr', revenue: 22000 },
-    { month: 'May', revenue: 25000 },
-  ];
-
-  if (metricsLoading) {
+  if (!metrics) {
     return (
-      <Layout userType="admin" hideFooter>
+      <Layout hideFooter>
         <div className="flex">
           <Sidebar type="admin" />
           <div className="flex-1 p-6 overflow-y-auto">
@@ -155,7 +160,7 @@ const AdminDashboard = () => {
   }
   
   return (
-    <Layout userType="admin" hideFooter>
+    <Layout hideFooter>
       <div className="flex">
         <Sidebar type="admin" />
         
@@ -259,26 +264,15 @@ const AdminDashboard = () => {
                         type="button" 
                         variant="outline" 
                         onClick={() => setIsInviteModalOpen(false)}
-                        disabled={createInvitation.isPending}
                       >
                         Cancel
                       </Button>
                       <Button 
                         type="submit" 
                         className="bg-airbnb-primary hover:bg-airbnb-primary/90"
-                        disabled={createInvitation.isPending}
                       >
-                        {createInvitation.isPending ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Sending...
-                          </>
-                        ) : (
-                          <>
-                            <Send className="h-4 w-4 mr-2" />
-                            Send Invitation
-                          </>
-                        )}
+                        <Send className="h-4 w-4 mr-2" />
+                        Send Invitation
                       </Button>
                     </DialogFooter>
                   </form>
@@ -426,60 +420,49 @@ const AdminDashboard = () => {
                 </Button>
               </CardHeader>
               <CardContent>
-                {invitationsLoading ? (
-                  <div className="flex items-center justify-center py-4">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {recentInvitations.length > 0 ? (
-                      recentInvitations.map((invitation: any) => (
-                        <div 
-                          key={invitation.id} 
-                          className="flex items-center justify-between p-3 bg-muted rounded-lg"
-                        >
-                          <div className="flex-1">
-                            <p className="font-medium text-sm">{invitation.invitee_name || 'N/A'}</p>
-                            <p className="text-xs text-airbnb-light">{invitation.email}</p>
-                            <p className="text-xs text-gray-500 capitalize">{invitation.invitation_type}</p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span 
-                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                invitation.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 
-                                invitation.status === 'accepted' ? 'bg-green-100 text-green-800' : 
-                                invitation.status === 'declined' ? 'bg-red-100 text-red-800' :
-                                'bg-gray-100 text-gray-800'
-                              }`}
-                            >
-                              {invitation.status.charAt(0).toUpperCase() + invitation.status.slice(1)}
-                            </span>
-                            {invitation.status === 'pending' && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleResendInvitation(invitation.id)}
-                                disabled={resendInvitation.isPending}
-                                className="h-8 w-8 p-0"
-                              >
-                                {resendInvitation.isPending ? (
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                ) : (
-                                  <RotateCcw className="h-3 w-3" />
-                                )}
-                              </Button>
-                            )}
-                          </div>
+                <div className="space-y-4">
+                  {recentInvitations.length > 0 ? (
+                    recentInvitations.map((invitation: any) => (
+                      <div 
+                        key={invitation.id} 
+                        className="flex items-center justify-between p-3 bg-muted rounded-lg"
+                      >
+                        <div className="flex-1">
+                          <p className="font-medium text-sm">{invitation.invitee_name || 'N/A'}</p>
+                          <p className="text-xs text-airbnb-light">{invitation.email}</p>
+                          <p className="text-xs text-gray-500 capitalize">{invitation.invitation_type}</p>
                         </div>
-                      ))
-                    ) : (
-                      <div className="text-center py-4 text-gray-500">
-                        <Mail className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                        <p className="text-sm">No invitations sent yet</p>
+                        <div className="flex items-center gap-2">
+                          <span 
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              invitation.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 
+                              invitation.status === 'accepted' ? 'bg-green-100 text-green-800' : 
+                              invitation.status === 'declined' ? 'bg-red-100 text-red-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}
+                          >
+                            {invitation.status.charAt(0).toUpperCase() + invitation.status.slice(1)}
+                          </span>
+                          {invitation.status === 'pending' && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleResendInvitation(invitation.id)}
+                              className="h-8 w-8 p-0"
+                            >
+                              <RotateCcw className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </div>
                       </div>
-                    )}
-                  </div>
-                )}
+                    ))
+                  ) : (
+                    <div className="text-center py-4 text-gray-500">
+                      <Mail className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">No invitations sent yet</p>
+                    </div>
+                  )}
+                </div>
               </CardContent>
             </Card>
             
@@ -494,39 +477,33 @@ const AdminDashboard = () => {
                 </Button>
               </CardHeader>
               <CardContent>
-                {activityLoading ? (
-                  <div className="flex items-center justify-center py-4">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {recentActivity?.data?.length > 0 ? (
-                      recentActivity.data.map((activity: any) => (
-                        <div 
-                          key={activity.id} 
-                          className="flex items-center justify-between p-3 bg-muted rounded-lg"
-                        >
-                          <div className="flex-1">
-                            <p className="font-medium text-sm">{activity.action.replace(/_/g, ' ')}</p>
-                            <p className="text-xs text-airbnb-light">
-                              {activity.user?.full_name || 'System'}
-                            </p>
-                          </div>
-                          <div>
-                            <span className="text-xs text-gray-500">
-                              {new Date(activity.created_at).toLocaleDateString()}
-                            </span>
-                          </div>
+                <div className="space-y-4">
+                  {recentActivity.length > 0 ? (
+                    recentActivity.map((activity: any) => (
+                      <div 
+                        key={activity.id} 
+                        className="flex items-center justify-between p-3 bg-muted rounded-lg"
+                      >
+                        <div className="flex-1">
+                          <p className="font-medium text-sm">{activity.action.replace(/_/g, ' ')}</p>
+                          <p className="text-xs text-airbnb-light">
+                            {activity.user?.full_name || 'System'}
+                          </p>
                         </div>
-                      ))
-                    ) : (
-                      <div className="text-center py-4 text-gray-500">
-                        <Calendar className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                        <p className="text-sm">No recent activity</p>
+                        <div>
+                          <span className="text-xs text-gray-500">
+                            {new Date(activity.created_at).toLocaleDateString()}
+                          </span>
+                        </div>
                       </div>
-                    )}
-                  </div>
-                )}
+                    ))
+                  ) : (
+                    <div className="text-center py-4 text-gray-500">
+                      <Calendar className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">No recent activity</p>
+                    </div>
+                  )}
+                </div>
               </CardContent>
             </Card>
           </div>

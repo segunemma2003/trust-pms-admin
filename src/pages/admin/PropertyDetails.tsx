@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import Layout from "@/components/layout/Layout";
 import Sidebar from "@/components/layout/Sidebar";
@@ -18,6 +18,7 @@ import {
   ExternalLink,
   Tag
 } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 // Component for image gallery with download buttons
 const ImageGallery = ({ images }: { images: string[] }) => {
@@ -61,7 +62,31 @@ const ImageGallery = ({ images }: { images: string[] }) => {
 const PropertyDetails = () => {
   const { id } = useParams<{ id: string }>();
   const [activeTab, setActiveTab] = useState("details");
-  
+  const [property, setProperty] = useState<any>(null);
+  const { user } = useAuth();
+
+  useEffect(() => {
+    const fetchProperty = async () => {
+      const token = localStorage.getItem('access_token');
+      if (!token || !id) return;
+      const response = await fetch(`/api/properties/${id}/`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setProperty(data);
+      }
+    };
+    fetchProperty();
+  }, [id]);
+
+  if (!property) {
+    return <div className="p-6">Loading property...</div>;
+  }
+
   return (
     <Layout hideFooter>
       <div className="flex">
@@ -82,10 +107,10 @@ const PropertyDetails = () => {
             
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div>
-                <h1 className="text-2xl font-bold text-airbnb-dark">Property Title</h1>
+                <h1 className="text-2xl font-bold text-airbnb-dark">{property.title}</h1>
                 <p className="text-sm text-airbnb-light flex items-center mt-1">
                   <MapPin className="h-3.5 w-3.5 mr-1" />
-                  Property Location
+                  {property.city}, {property.state}
                 </p>
               </div>
               
@@ -110,7 +135,7 @@ const PropertyDetails = () => {
                 </div>
                 <div>
                   <p className="text-sm text-airbnb-light">Beds</p>
-                  <p className="text-lg font-medium">Beds Count</p>
+                  <p className="text-lg font-medium">{property.bedrooms}</p>
                 </div>
               </CardContent>
             </Card>
@@ -122,7 +147,7 @@ const PropertyDetails = () => {
                 </div>
                 <div>
                   <p className="text-sm text-airbnb-light">Baths</p>
-                  <p className="text-lg font-medium">Baths Count</p>
+                  <p className="text-lg font-medium">{property.bathrooms}</p>
                 </div>
               </CardContent>
             </Card>
@@ -134,7 +159,7 @@ const PropertyDetails = () => {
                 </div>
                 <div>
                   <p className="text-sm text-airbnb-light">Price</p>
-                  <p className="text-lg font-medium">Price per night</p>
+                  <p className="text-lg font-medium">${property.display_price || property.price_per_night}/night</p>
                 </div>
               </CardContent>
             </Card>
@@ -159,30 +184,28 @@ const PropertyDetails = () => {
                 <CardContent className="space-y-4">
                   <div>
                     <h3 className="font-medium mb-2">Description</h3>
-                    <p className="text-sm">This beautiful property offers a serene getaway with modern amenities and stunning views.</p>
+                    <p className="text-sm">{property.description}</p>
                   </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <h3 className="font-medium mb-2">Owner</h3>
-                      <p className="text-sm">John Doe</p>
-                      <p className="text-xs text-airbnb-light">john.doe@example.com</p>
+                      <p className="text-sm">{property.owner_name}</p>
+                      <p className="text-xs text-airbnb-light">{property.owner_email}</p>
                     </div>
                     
                     <div>
                       <h3 className="font-medium mb-2">Status</h3>
-                      <Badge className="bg-green-100 text-green-800">Active</Badge>
+                      <Badge className={property.status === 'active' ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}>{property.status}</Badge>
                     </div>
                   </div>
                   
                   <div>
                     <h3 className="font-medium mb-2">Amenities</h3>
                     <div className="flex flex-wrap gap-2">
-                      <Badge variant="outline">WiFi</Badge>
-                      <Badge variant="outline">Pool</Badge>
-                      <Badge variant="outline">Kitchen</Badge>
-                      <Badge variant="outline">Parking</Badge>
-                      <Badge variant="outline">Air Conditioning</Badge>
+                      {property.amenities && property.amenities.map((amenity: string, idx: number) => (
+                        <Badge key={idx} variant="outline">{amenity}</Badge>
+                      ))}
                     </div>
                   </div>
                   
@@ -190,11 +213,11 @@ const PropertyDetails = () => {
                     <h3 className="font-medium mb-2">Additional Information</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 text-sm">
                       <div className="text-airbnb-light">Property Type:</div>
-                      <div>Villa</div>
+                      <div>{property.property_type || 'N/A'}</div>
                       <div className="text-airbnb-light">Maximum Guests:</div>
-                      <div>6</div>
+                      <div>{property.max_guests}</div>
                       <div className="text-airbnb-light">Beds24 ID:</div>
-                      <div>BD24-RandomID</div>
+                      <div>{property.beds24_id || 'N/A'}</div>
                     </div>
                   </div>
                 </CardContent>

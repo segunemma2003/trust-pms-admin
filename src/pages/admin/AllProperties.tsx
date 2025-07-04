@@ -1,5 +1,4 @@
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import Layout from "@/components/layout/Layout";
 import Sidebar from "@/components/layout/Sidebar";
@@ -22,7 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { mockProperties } from "@/data/mockData";
+import { useAuth } from "@/contexts/AuthContext";
 
 type SortDirection = "asc" | "desc";
 type SortField = "title" | "location" | "price" | "rating" | "status";
@@ -46,49 +45,35 @@ const AllProperties = () => {
     }
   };
 
-  // Map properties from mockProperties to match the structure we need
-  const properties = mockProperties.map(prop => ({
-    id: prop.id,
-    title: prop.title,
-    owner: "John Doe", // Mock owner name
-    location: prop.location,
-    price: prop.price,
-    rating: prop.rating,
-    status: Math.random() > 0.3 ? "active" : (Math.random() > 0.5 ? "pending" : "inactive"),
-    images: prop.images,
-    beds: prop.beds,
-    baths: prop.baths
-  }));
-  
-  // Apply filters and sorting
-  const filteredProperties = properties
-    .filter(property => 
-      (searchQuery === "" || 
-        property.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-        property.location.toLowerCase().includes(searchQuery.toLowerCase())
-      ) && 
-      (statusFilter === null || property.status === statusFilter)
-    )
-    .sort((a, b) => {
-      let comparison = 0;
-      
-      if (sortField === "title") {
-        comparison = a.title.localeCompare(b.title);
-      } else if (sortField === "location") {
-        comparison = a.location.localeCompare(b.location);
-      } else if (sortField === "price") {
-        comparison = a.price - b.price;
-      } else if (sortField === "rating") {
-        comparison = (a.rating || 0) - (b.rating || 0);
-      } else if (sortField === "status") {
-        comparison = a.status.localeCompare(b.status);
+  const [properties, setProperties] = useState([]);
+  const { user } = useAuth();
+
+  useEffect(() => {
+    const fetchProperties = async () => {
+      const token = localStorage.getItem('access_token');
+      if (!token) return;
+      let url = `/api/properties/?page=1&page_size=100`;
+      if (searchQuery) url += `&search=${encodeURIComponent(searchQuery)}`;
+      if (statusFilter) url += `&status=${statusFilter}`;
+      if (sortField) url += `&ordering=${sortDirection === 'asc' ? '' : '-'}${sortField}`;
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setProperties(data.results || []);
+      } else {
+        setProperties([]);
       }
-      
-      return sortDirection === "asc" ? comparison : -comparison;
-    });
+    };
+    fetchProperties();
+  }, [searchQuery, statusFilter, sortField, sortDirection]);
   
   return (
-    <Layout userType="admin" hideFooter>
+    <Layout hideFooter>
       <div className="flex">
         <Sidebar type="admin" />
         
@@ -119,7 +104,7 @@ const AllProperties = () => {
                 <div>
                   <CardTitle>Property Listings</CardTitle>
                   <CardDescription>
-                    {filteredProperties.length} total properties
+                    {properties.length} total properties
                   </CardDescription>
                 </div>
                 <div className="flex flex-col md:flex-row gap-4">
@@ -183,7 +168,7 @@ const AllProperties = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredProperties.map((property) => (
+                    {properties.map((property) => (
                       <TableRow key={property.id}>
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-3">

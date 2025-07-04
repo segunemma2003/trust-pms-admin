@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Layout from "@/components/layout/Layout";
 import Sidebar from "@/components/layout/Sidebar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,11 +32,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { 
-  useCreateInvitationWithEmail, 
-  useInvitations, 
-  useResendInvitation 
-} from "@/hooks/useInvitations";
+import { useAuth } from "@/contexts/AuthContext";
 
 const InvitationsPage = () => {
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
@@ -49,11 +45,31 @@ const InvitationsPage = () => {
     invitationType: "owner" as "owner" | "user" | "admin",
     message: ""
   });
+  const [invitations, setInvitations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
 
-  // Use Supabase-connected hooks
-  const { data: invitations, isLoading: invitationsLoading } = useInvitations();
-  const createInvitation = useCreateInvitationWithEmail();
-  const resendInvitation = useResendInvitation();
+  useEffect(() => {
+    const fetchInvitations = async () => {
+      setLoading(true);
+      const token = localStorage.getItem('access_token');
+      if (!token) return;
+      const response = await fetch(`/api/invitations/`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setInvitations(data.results || []);
+      } else {
+        setInvitations([]);
+      }
+      setLoading(false);
+    };
+    fetchInvitations();
+  }, []);
 
   const handleInputChange = (field: string, value: string) => {
     setInviteForm(prev => ({
@@ -64,56 +80,41 @@ const InvitationsPage = () => {
 
   const handleInviteSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Validate form
     if (!inviteForm.name.trim() || !inviteForm.email.trim()) {
-      return; // Error will be shown by the mutation
+      return;
     }
-    
-    try {
-      await createInvitation.mutateAsync({
-        email: inviteForm.email.trim(),
-        invitee_name: inviteForm.name.trim(),
+    const token = localStorage.getItem('access_token');
+    if (!token) return;
+    const response = await fetch(`/api/invitations/`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: inviteForm.email,
+        invitee_name: inviteForm.name,
         invitation_type: inviteForm.invitationType,
-        personal_message: inviteForm.message.trim() || null
-      });
-      
-      // Reset form and close modal
-      setInviteForm({ 
-        name: "", 
-        email: "", 
-        invitationType: "owner",
-        message: "" 
-      });
+        personal_message: inviteForm.message
+      })
+    });
+    if (response.ok) {
       setIsInviteModalOpen(false);
-      
-    } catch (error) {
-      console.error("Error sending invitation:", error);
+      setInviteForm({ name: '', email: '', invitationType: 'owner', message: '' });
+      // Optionally refetch invitations
     }
   };
 
   const handleResendInvitation = async (invitationId: string) => {
-    // Set the specific invitation as loading
-    setResendingInvitationId(invitationId);
-    
-    try {
-      await resendInvitation.mutateAsync(invitationId);
-    } catch (error) {
-      console.error("Error resending invitation:", error);
-    } finally {
-      // Clear the loading state regardless of success/failure
-      setResendingInvitationId(null);
-    }
+    alert('Resend invitation is not implemented yet.');
   };
 
   // Filter invitations based on search and status
-  const filteredInvitations = (invitations?.data || []).filter(invitation => {
+  const filteredInvitations = (invitations || []).filter((invitation: any) => {
     const matchesSearch = searchQuery === "" || 
       invitation.invitee_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       invitation.email.toLowerCase().includes(searchQuery.toLowerCase());
-    
     const matchesStatus = statusFilter === "all" || invitation.status === statusFilter;
-    
     return matchesSearch && matchesStatus;
   });
 
@@ -148,9 +149,9 @@ const InvitationsPage = () => {
            'Unknown';
   };
 
-  if (invitationsLoading) {
+  if (loading) {
     return (
-      <Layout userType="admin" hideFooter>
+      <Layout hideFooter>
         <div className="flex">
           <Sidebar type="admin" />
           <div className="flex-1 p-6 overflow-y-auto">
@@ -164,10 +165,9 @@ const InvitationsPage = () => {
   }
 
   return (
-    <Layout userType="admin" hideFooter>
+    <Layout hideFooter>
       <div className="flex">
         <Sidebar type="admin" />
-        
         <div className="flex-1 p-6 overflow-y-auto">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
             <div>
@@ -176,7 +176,6 @@ const InvitationsPage = () => {
                 Manage user invitations and track their status
               </p>
             </div>
-            
             <Dialog open={isInviteModalOpen} onOpenChange={setIsInviteModalOpen}>
               <DialogTrigger asChild>
                 <Button className="mt-4 md:mt-0 bg-airbnb-primary hover:bg-airbnb-primary/90 flex items-center gap-2">
@@ -194,7 +193,6 @@ const InvitationsPage = () => {
                     Send an invitation to join the OIFYK platform. An email will be sent with registration instructions.
                   </DialogDescription>
                 </DialogHeader>
-                
                 <form onSubmit={handleInviteSubmit} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="name">Full Name *</Label>
@@ -206,7 +204,6 @@ const InvitationsPage = () => {
                       required
                     />
                   </div>
-                  
                   <div className="space-y-2">
                     <Label htmlFor="email">Email Address *</Label>
                     <Input
@@ -218,7 +215,6 @@ const InvitationsPage = () => {
                       required
                     />
                   </div>
-
                   <div className="space-y-2">
                     <Label htmlFor="invitationType">User Type *</Label>
                     <Select 
@@ -243,7 +239,6 @@ const InvitationsPage = () => {
                       }
                     </p>
                   </div>
-                  
                   <div className="space-y-2">
                     <Label htmlFor="message">Personal Message (Optional)</Label>
                     <Textarea
@@ -254,39 +249,26 @@ const InvitationsPage = () => {
                       rows={3}
                     />
                   </div>
-                  
                   <DialogFooter>
                     <Button 
                       type="button" 
                       variant="outline" 
                       onClick={() => setIsInviteModalOpen(false)}
-                      disabled={createInvitation.isPending}
                     >
                       Cancel
                     </Button>
                     <Button 
                       type="submit" 
                       className="bg-airbnb-primary hover:bg-airbnb-primary/90"
-                      disabled={createInvitation.isPending}
                     >
-                      {createInvitation.isPending ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Sending...
-                        </>
-                      ) : (
-                        <>
-                          <Send className="h-4 w-4 mr-2" />
-                          Send Invitation
-                        </>
-                      )}
+                      <Send className="h-4 w-4 mr-2" />
+                      Send Invitation
                     </Button>
                   </DialogFooter>
                 </form>
               </DialogContent>
             </Dialog>
           </div>
-          
           <Card>
             <CardHeader>
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -296,7 +278,6 @@ const InvitationsPage = () => {
                     Track and manage all invitations sent to users
                   </CardDescription>
                 </div>
-                
                 <div className="flex flex-col sm:flex-row gap-2">
                   {/* Search Input */}
                   <div className="relative">
@@ -308,7 +289,6 @@ const InvitationsPage = () => {
                       onChange={(e) => setSearchQuery(e.target.value)}
                     />
                   </div>
-                  
                   {/* Status Filter */}
                   <Select value={statusFilter} onValueChange={setStatusFilter}>
                     <SelectTrigger className="w-full sm:w-32">
@@ -358,30 +338,29 @@ const InvitationsPage = () => {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                     <div className="bg-blue-50 p-3 rounded-lg text-center">
                       <div className="text-2xl font-bold text-blue-600">
-                        {invitations?.data?.length || 0}
+                        {invitations.length}
                       </div>
                       <div className="text-sm text-blue-600">Total</div>
                     </div>
                     <div className="bg-yellow-50 p-3 rounded-lg text-center">
                       <div className="text-2xl font-bold text-yellow-600">
-                        {invitations?.data?.filter(inv => inv.status === 'pending').length || 0}
+                        {invitations.filter(inv => inv.status === 'pending').length}
                       </div>
                       <div className="text-sm text-yellow-600">Pending</div>
                     </div>
                     <div className="bg-green-50 p-3 rounded-lg text-center">
                       <div className="text-2xl font-bold text-green-600">
-                        {invitations?.data?.filter(inv => inv.status === 'accepted').length || 0}
+                        {invitations.filter(inv => inv.status === 'accepted').length}
                       </div>
                       <div className="text-sm text-green-600">Accepted</div>
                     </div>
                     <div className="bg-red-50 p-3 rounded-lg text-center">
                       <div className="text-2xl font-bold text-red-600">
-                        {invitations?.data?.filter(inv => inv.status === 'declined').length || 0}
+                        {invitations.filter(inv => inv.status === 'declined').length}
                       </div>
                       <div className="text-sm text-red-600">Declined</div>
                     </div>
                   </div>
-
                   {/* Invitations Table */}
                   <div className="overflow-x-auto">
                     <Table>
@@ -398,8 +377,6 @@ const InvitationsPage = () => {
                       </TableHeader>
                       <TableBody>
                         {filteredInvitations.map((invitation) => {
-                          const isResending = resendingInvitationId === invitation.id;
-                          
                           return (
                             <TableRow key={invitation.id}>
                               <TableCell className="font-medium">
@@ -437,17 +414,10 @@ const InvitationsPage = () => {
                                       variant="outline"
                                       size="sm"
                                       onClick={() => handleResendInvitation(invitation.id)}
-                                      disabled={isResending}
                                       className="hover:bg-airbnb-primary/10"
                                     >
-                                      {isResending ? (
-                                        <Loader2 className="h-3 w-3 animate-spin" />
-                                      ) : (
-                                        <>
-                                          <RotateCcw className="h-3 w-3 mr-1" />
-                                          Resend
-                                        </>
-                                      )}
+                                      <RotateCcw className="h-3 w-3 mr-1" />
+                                      Resend
                                     </Button>
                                   )}
                                   {invitation.personal_message && (
@@ -470,11 +440,10 @@ const InvitationsPage = () => {
                       </TableBody>
                     </Table>
                   </div>
-
                   {/* Pagination or Load More could go here if needed */}
                   {filteredInvitations.length > 0 && (
                     <div className="mt-4 text-center text-sm text-gray-500">
-                      Showing {filteredInvitations.length} of {invitations?.data?.length || 0} invitations
+                      Showing {filteredInvitations.length} of {invitations.length} invitations
                     </div>
                   )}
                 </>

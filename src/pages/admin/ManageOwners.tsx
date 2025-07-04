@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import Layout from "@/components/layout/Layout";
 import Sidebar from "@/components/layout/Sidebar";
@@ -39,124 +39,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { 
-  useCreateInvitationWithEmail, 
-  useResendInvitation 
-} from "@/hooks/useInvitations";
-
-// Simplified hook - just get owners, property counts separately
-const useOwners = () => {
-  return useQuery({
-    queryKey: ['simple-owners'],
-    queryFn: async () => {
-      console.log('🔍 Fetching owners (simple approach)...')
-      
-      try {
-        // Step 1: Get all owners
-        const { data: owners, error: ownersError } = await supabase
-          .from('users')
-          .select('id, email, full_name, phone, user_type, status, email_verified, created_at, updated_at')
-          .eq('user_type', 'owner')
-          .order('created_at', { ascending: false })
-
-        if (ownersError) {
-          console.error('❌ Error fetching owners:', ownersError)
-          throw ownersError
-        }
-
-        console.log('✅ Fetched owners:', owners?.length || 0)
-
-        // Step 2: For each owner, count their properties
-        const ownersWithCounts = await Promise.all(
-          (owners || []).map(async (owner) => {
-            try {
-              const { count } = await supabase
-                .from('properties')
-                .select('*', { count: 'exact', head: true })
-                .eq('owner_id', owner.id)
-
-              return {
-                ...owner,
-                property_count: count || 0
-              }
-            } catch (error) {
-              console.warn(`⚠️ Could not get property count for owner ${owner.id}:`, error)
-              return {
-                ...owner,
-                property_count: 0
-              }
-            }
-          })
-        )
-
-        console.log('✅ Owners with property counts calculated')
-        return ownersWithCounts
-
-      } catch (error) {
-        console.error('❌ Error in useOwners:', error)
-        throw error
-      }
-    },
-    retry: 2,
-    retryDelay: 1000
-  })
-}
-
-// Simple stats hook
-const useOwnerStats = () => {
-  return useQuery({
-    queryKey: ['simple-owner-stats'],
-    queryFn: async () => {
-      console.log('📊 Fetching owner statistics (simple)...')
-      
-      try {
-        // Get basic counts
-        const { count: totalOwners } = await supabase
-          .from('users')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_type', 'owner')
-
-        const { count: activeOwners } = await supabase
-          .from('users')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_type', 'owner')
-          .eq('status', 'active')
-
-        const { count: pendingOwners } = await supabase
-          .from('users')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_type', 'owner')
-          .eq('status', 'pending')
-
-        const { count: totalProperties } = await supabase
-          .from('properties')
-          .select('*', { count: 'exact', head: true })
-
-        const stats = {
-          totalOwners: totalOwners || 0,
-          activeOwners: activeOwners || 0,
-          pendingOwners: pendingOwners || 0,
-          totalProperties: totalProperties || 0
-        }
-
-        console.log('✅ Simple stats calculated:', stats)
-        return stats
-
-      } catch (error) {
-        console.error('❌ Error fetching simple stats:', error)
-        return {
-          totalOwners: 0,
-          activeOwners: 0,
-          pendingOwners: 0,
-          totalProperties: 0
-        }
-      }
-    }
-  })
-}
 
 const ManageOwners = () => {
   const [searchQuery, setSearchQuery] = useState("");
@@ -167,32 +51,46 @@ const ManageOwners = () => {
     email: "",
     message: ""
   });
+  const [owners, setOwners] = useState([]);
+  const [stats, setStats] = useState({ totalOwners: 0, activeOwners: 0, pendingOwners: 0, totalProperties: 0 });
+  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
 
-  // Use simplified hooks
-  const { 
-    data: owners, 
-    isLoading: ownersLoading, 
-    error: ownersError,
-    refetch: refetchOwners 
-  } = useOwners();
-  
-  const { 
-    data: stats, 
-    isLoading: statsLoading,
-    refetch: refetchStats 
-  } = useOwnerStats();
-  
-  const createInvitation = useCreateInvitationWithEmail();
-  const resendInvitation = useResendInvitation();
+  useEffect(() => {
+    const fetchOwners = async () => {
+      setLoading(true);
+      const token = localStorage.getItem('access_token');
+      if (!token) return;
+      const response = await fetch(`/api/users/search/?user_type=owner&page=1&page_size=100`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setOwners(data.results || []);
+        setStats({
+          totalOwners: data.count || 0,
+          activeOwners: (data.results || []).filter((o: any) => o.status === 'active').length,
+          pendingOwners: (data.results || []).filter((o: any) => o.status === 'pending').length,
+          totalProperties: 0 // Optionally fetch from /api/properties/ and count by owner
+        });
+      } else {
+        setOwners([]);
+        setStats({ totalOwners: 0, activeOwners: 0, pendingOwners: 0, totalProperties: 0 });
+      }
+      setLoading(false);
+    };
+    fetchOwners();
+  }, []);
 
   // Filter owners based on search and status
-  const filteredOwners = (owners || []).filter(owner => {
+  const filteredOwners = (owners || []).filter((owner: any) => {
     const matchesSearch = searchQuery === "" || 
       owner.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       owner.email.toLowerCase().includes(searchQuery.toLowerCase());
-    
     const matchesStatus = statusFilter === "all" || owner.status === statusFilter;
-    
     return matchesSearch && matchesStatus;
   });
 
@@ -205,55 +103,32 @@ const ManageOwners = () => {
 
   const handleInviteSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!inviteForm.name.trim() || !inviteForm.email.trim()) {
-      return;
-    }
-    
-    try {
-      await createInvitation.mutateAsync({
-        email: inviteForm.email.trim(),
-        invitee_name: inviteForm.name.trim(),
+    const token = localStorage.getItem('access_token');
+    if (!token) return;
+    const response = await fetch(`/api/invitations/`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: inviteForm.email,
+        invitee_name: inviteForm.name,
         invitation_type: 'owner',
-        personal_message: inviteForm.message.trim() || null
-      });
-      
-      // Reset form and close modal
-      setInviteForm({ name: "", email: "", message: "" });
+        personal_message: inviteForm.message
+      })
+    });
+    if (response.ok) {
+      toast.success('Invitation sent successfully!');
       setIsInviteModalOpen(false);
-      
-      // Refresh data
-      refetchOwners();
-      refetchStats();
-      
-    } catch (error) {
-      console.error("Error sending invitation:", error);
+      setInviteForm({ name: '', email: '', message: '' });
+    } else {
+      toast.error('Failed to send invitation.');
     }
   };
 
   const handleResendInvitation = async (ownerId: string, ownerName: string) => {
-    try {
-      const ownerEmail = owners?.find(o => o.id === ownerId)?.email;
-      if (!ownerEmail) {
-        toast.error("Owner email not found");
-        return;
-      }
-
-      const { data: invitations } = await supabase
-        .from('invitations')
-        .select('id')
-        .eq('email', ownerEmail)
-        .eq('status', 'pending')
-        .single();
-
-      if (invitations) {
-        await resendInvitation.mutateAsync(invitations.id);
-      } else {
-        toast.error("No pending invitation found for this owner");
-      }
-    } catch (error) {
-      console.error("Error resending invitation:", error);
-    }
+    toast.info('Resend invitation is not implemented yet.');
   };
 
   const handleSendMessage = (ownerName: string, ownerEmail: string) => {
@@ -265,9 +140,7 @@ const ManageOwners = () => {
   };
 
   const handleRefresh = () => {
-    refetchOwners();
-    refetchStats();
-    toast.success("Data refreshed!");
+    window.location.reload();
   };
 
   const formatDate = (dateString: string) => {
@@ -293,49 +166,9 @@ const ManageOwners = () => {
     }
   };
 
-  if (ownersError) {
+  if (loading) {
     return (
-      <Layout userType="admin" hideFooter>
-        <div className="flex">
-          <Sidebar type="admin" />
-          <div className="flex-1 p-6 overflow-y-auto">
-            <div className="text-center py-12">
-              <div className="max-w-md mx-auto">
-                <div className="text-red-600 mb-6">
-                  <h3 className="text-xl font-semibold mb-2">Unable to Load Owners</h3>
-                  <p className="text-sm text-gray-600 mb-4">
-                    There was an issue connecting to the database. This might be a temporary connectivity problem.
-                  </p>
-                  <div className="bg-red-50 border border-red-200 rounded p-3 text-sm text-left">
-                    <strong>Error:</strong> {ownersError.message}
-                  </div>
-                </div>
-                <div className="space-y-3">
-                  <Button 
-                    onClick={handleRefresh}
-                    className="bg-airbnb-primary hover:bg-airbnb-primary/90"
-                  >
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Try Again
-                  </Button>
-                  <Button 
-                    variant="outline"
-                    onClick={() => window.location.reload()}
-                  >
-                    Reload Page
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </Layout>
-    );
-  }
-
-  if (ownersLoading) {
-    return (
-      <Layout userType="admin" hideFooter>
+      <Layout hideFooter>
         <div className="flex">
           <Sidebar type="admin" />
           <div className="flex-1 p-6 overflow-y-auto">
@@ -355,7 +188,7 @@ const ManageOwners = () => {
   }
 
   return (
-    <Layout userType="admin" hideFooter>
+    <Layout hideFooter>
       <div className="flex">
         <Sidebar type="admin" />
         
@@ -372,10 +205,10 @@ const ManageOwners = () => {
               <Button 
                 variant="outline"
                 onClick={handleRefresh}
-                disabled={ownersLoading}
+                disabled={loading}
                 className="flex items-center gap-2"
               >
-                <RefreshCw className={`h-4 w-4 ${ownersLoading ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                 Refresh
               </Button>
               
@@ -437,26 +270,15 @@ const ManageOwners = () => {
                         type="button" 
                         variant="outline" 
                         onClick={() => setIsInviteModalOpen(false)}
-                        disabled={createInvitation.isPending}
                       >
                         Cancel
                       </Button>
                       <Button 
                         type="submit" 
                         className="bg-airbnb-primary hover:bg-airbnb-primary/90"
-                        disabled={createInvitation.isPending}
                       >
-                        {createInvitation.isPending ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Sending...
-                          </>
-                        ) : (
-                          <>
-                            <Send className="h-4 w-4 mr-2" />
-                            Send Invitation
-                          </>
-                        )}
+                        <Send className="h-4 w-4 mr-2" />
+                        Send Invitation
                       </Button>
                     </DialogFooter>
                   </form>
@@ -466,7 +288,7 @@ const ManageOwners = () => {
           </div>
 
           {/* Owner Statistics */}
-          {!statsLoading && stats && (
+          {!loading && stats && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               <Card>
                 <CardContent className="p-4">
