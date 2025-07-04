@@ -1,5 +1,4 @@
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Layout from "@/components/layout/Layout";
 import Sidebar from "@/components/layout/Sidebar";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,10 +20,102 @@ import {
   Lock,
   Globe
 } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 const Settings = () => {
   const [saving, setSaving] = useState(false);
+  const [profileTab, setProfileTab] = useState({
+    full_name: '',
+    phone: '',
+    email: '',
+  });
+  const [passwordTab, setPasswordTab] = useState({
+    old_password: '',
+    new_password: '',
+  });
+  const [profileLoading, setProfileLoading] = useState(false);
+  const { user, refreshProfile } = useAuth();
   
+  useEffect(() => {
+    const fetchProfile = async () => {
+      setProfileLoading(true);
+      const token = localStorage.getItem('access_token');
+      if (!token) return;
+      const response = await fetch(`/api/users/profile/`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setProfileTab({
+          full_name: data.full_name || '',
+          phone: data.phone || '',
+          email: data.email || '',
+        });
+      }
+      setProfileLoading(false);
+    };
+    fetchProfile();
+  }, []);
+
+  const handleProfileChange = (e) => {
+    setProfileTab({ ...profileTab, [e.target.name]: e.target.value });
+  };
+
+  const handleProfileSave = async () => {
+    setSaving(true);
+    const token = localStorage.getItem('access_token');
+    if (!token) return;
+    const response = await fetch(`/api/users/update_profile/`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        full_name: profileTab.full_name,
+        phone: profileTab.phone,
+      }),
+    });
+    if (response.ok) {
+      toast.success('Profile updated successfully!');
+      refreshProfile();
+    } else {
+      toast.error('Failed to update profile.');
+    }
+    setSaving(false);
+  };
+
+  const handlePasswordChange = (e) => {
+    setPasswordTab({ ...passwordTab, [e.target.name]: e.target.value });
+  };
+
+  const handlePasswordSave = async () => {
+    setSaving(true);
+    const token = localStorage.getItem('access_token');
+    if (!token) return;
+    const response = await fetch(`/api/users/change_password/`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        old_password: passwordTab.old_password,
+        new_password: passwordTab.new_password,
+      }),
+    });
+    if (response.ok) {
+      toast.success('Password changed successfully!');
+      setPasswordTab({ old_password: '', new_password: '' });
+    } else {
+      toast.error('Failed to change password.');
+    }
+    setSaving(false);
+  };
+
   const handleSaveSettings = () => {
     setSaving(true);
     // Simulate API call
@@ -35,7 +126,7 @@ const Settings = () => {
   };
 
   return (
-    <Layout userType="admin" hideFooter>
+    <Layout hideFooter>
       <div className="flex">
         <Sidebar type="admin" />
         
@@ -69,14 +160,68 @@ const Settings = () => {
             </div>
           </div>
           
-          <Tabs defaultValue="general" className="mt-6">
-            <TabsList className="grid w-full grid-cols-2 md:grid-cols-5">
+          <Tabs defaultValue="profile" className="mt-6">
+            <TabsList className="grid w-full grid-cols-2 md:grid-cols-6">
+              <TabsTrigger value="profile">Profile</TabsTrigger>
               <TabsTrigger value="general">General</TabsTrigger>
               <TabsTrigger value="security">Security</TabsTrigger>
               <TabsTrigger value="notifications">Notifications</TabsTrigger>
               <TabsTrigger value="integrations">Integrations</TabsTrigger>
               <TabsTrigger value="billing">Billing</TabsTrigger>
             </TabsList>
+            
+            <TabsContent value="profile" className="mt-6 space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Admin Profile</CardTitle>
+                  <CardDescription>View and update your profile information</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="full_name">Full Name</Label>
+                      <Input id="full_name" name="full_name" value={profileTab.full_name} onChange={handleProfileChange} disabled={profileLoading} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="email">Email</Label>
+                      <Input id="email" name="email" value={profileTab.email} disabled readOnly />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="phone">Phone</Label>
+                      <Input id="phone" name="phone" value={profileTab.phone} onChange={handleProfileChange} disabled={profileLoading} />
+                    </div>
+                  </div>
+                </CardContent>
+                <CardFooter>
+                  <Button onClick={handleProfileSave} disabled={saving || profileLoading} className="bg-airbnb-primary hover:bg-airbnb-primary/90">
+                    {saving ? 'Saving...' : 'Save Profile'}
+                  </Button>
+                </CardFooter>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Change Password</CardTitle>
+                  <CardDescription>Update your account password</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="old_password">Current Password</Label>
+                      <Input id="old_password" name="old_password" type="password" value={passwordTab.old_password} onChange={handlePasswordChange} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="new_password">New Password</Label>
+                      <Input id="new_password" name="new_password" type="password" value={passwordTab.new_password} onChange={handlePasswordChange} />
+                    </div>
+                  </div>
+                </CardContent>
+                <CardFooter>
+                  <Button onClick={handlePasswordSave} disabled={saving} className="bg-airbnb-primary hover:bg-airbnb-primary/90">
+                    {saving ? 'Saving...' : 'Change Password'}
+                  </Button>
+                </CardFooter>
+              </Card>
+            </TabsContent>
             
             <TabsContent value="general" className="mt-6 space-y-4">
               <Card>
