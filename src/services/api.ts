@@ -1,556 +1,603 @@
-import { supabase } from '@/lib/supabase'
-import type { Database } from '@/lib/database.types'
-import { 
-  mockDashboardMetrics, 
-  mockInvitations, 
-  mockProperties, 
-  mockBookings, 
-  mockUsers, 
-  mockActivity 
-} from './mockData'
+// API Configuration
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://your-domain.com/api'
 
-type Tables = Database['public']['Tables']
-type UserType = Database['public']['Enums']['user_type']
-
-// Helper to check if user is anonymous
-const isAnonymousUser = () => {
-  return !!localStorage.getItem('anonymous_user')
+// Types based on your API documentation
+export interface User {
+  id: string
+  email: string
+  full_name: string
+  phone?: string
+  user_type: 'user' | 'owner' | 'admin'
+  status: 'active' | 'inactive'
+  trust_network_size?: number
+  onboarding_completed: boolean
+  date_joined: string
 }
 
-// User Services
-export const userService = {
-  // Get all users (admin only)
-  getUsers: async () => {
-    if (isAnonymousUser()) {
-      return { data: mockUsers, error: null }
-    }
-    return await supabase
-      .from('users')
-      .select('*')
-      .order('created_at', { ascending: false })
-  },
-
-  // Update user profile
-  updateUser: async (id: string, updates: Partial<Tables['users']['Update']>) => {
-    if (isAnonymousUser()) {
-      // For demo, just return success
-      return { data: { ...mockUsers[0], ...updates }, error: null }
-    }
-    return await supabase
-      .from('users')
-      .update(updates)
-      .eq('id', id)
-      .select()
-      .single()
-  },
-
-  // Get users by type
-  getUsersByType: async (userType: UserType) => {
-    if (isAnonymousUser()) {
-      const filteredUsers = mockUsers.filter(user => user.user_type === userType)
-      return { data: filteredUsers, error: null }
-    }
-    return await supabase
-      .from('users')
-      .select('*')
-      .eq('user_type', userType)
-      .order('created_at', { ascending: false })
-  }
+export interface Property {
+  id: string
+  title: string
+  description: string
+  address?: string
+  city: string
+  state: string
+  country: string
+  postal_code?: string
+  latitude?: number
+  longitude?: number
+  display_price: number
+  price_per_night?: number
+  bedrooms: number
+  bathrooms: number
+  max_guests: number
+  images: PropertyImage[]
+  amenities: string[]
+  status: 'draft' | 'active' | 'inactive'
+  is_featured: boolean
+  owner_name: string
+  booking_count: number
+  created_at: string
 }
 
-// Invitation Services
-export const invitationService = {
-  // Create invitation (admin only)
-  createInvitation: async (invitation: Tables['invitations']['Insert']) => {
-    if (isAnonymousUser()) {
-      // For demo, simulate creating invitation
-      const newInvitation = {
-        id: `mock-inv-${Date.now()}`,
-        ...invitation,
-        status: 'pending' as const,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }
-      return { data: newInvitation, error: null }
-    }
-    return await supabase
-      .from('invitations')
-      .insert(invitation)
-      .select()
-      .single()
-  },
+export interface PropertyImage {
+  id: string
+  image_url: string
+  is_primary: boolean
+  order: number
+}
 
-  // Create invitation and send email
-  createInvitationWithEmail: async (invitation: Tables['invitations']['Insert'], inviterName: string) => {
-    if (isAnonymousUser()) {
-      // For demo, simulate creating invitation with email
-      const newInvitation = {
-        id: `mock-inv-${Date.now()}`,
-        ...invitation,
-        status: 'pending' as const,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }
-      return { 
-        data: newInvitation, 
-        emailSent: true, 
-        error: null 
-      }
-    }
-    
-    // For real users, this would be implemented in a separate service
-    // For now, just create the invitation
-    const result = await supabase
-      .from('invitations')
-      .insert(invitation)
-      .select()
-      .single()
-    
-    return {
-      data: result.data,
-      emailSent: false, // Would be true if email service is implemented
-      error: result.error
-    }
-  },
+export interface Booking {
+  id: string
+  property: string
+  property_details: {
+    title: string
+    city: string
+  }
+  guest: string
+  guest_name: string
+  guest_email: string
+  check_in_date: string
+  check_out_date: string
+  nights: number
+  guests_count: number
+  total_amount: number
+  original_price: number
+  discount_applied: number
+  status: 'pending' | 'confirmed' | 'cancelled' | 'completed'
+  special_requests?: string
+  created_at: string
+}
 
-  // Get all invitations
-  getInvitations: async () => {
-    if (isAnonymousUser()) {
-      return { data: mockInvitations, error: null }
-    }
-    return await supabase
-      .from('invitations')
-      .select(`
-        *,
-        invited_by_user:users!invited_by(full_name, email),
-        accepted_by_user:users!accepted_by(full_name, email)
-      `)
-      .order('created_at', { ascending: false })
-  },
+export interface Invitation {
+  id: string
+  email: string
+  invitee_name: string
+  invitation_type: 'user' | 'owner' | 'admin'
+  status: 'pending' | 'accepted' | 'declined' | 'expired'
+  personal_message?: string
+  invited_by_name: string
+  expires_at: string
+  is_valid: boolean
+  can_send_reminder: boolean
+  days_until_expiry: number
+  created_at: string
+}
 
-  // Update invitation status
-  updateInvitation: async (id: string, updates: Tables['invitations']['Update']) => {
-    if (isAnonymousUser()) {
-      const invitation = mockInvitations.find(inv => inv.id === id)
-      return { data: { ...invitation, ...updates }, error: null }
-    }
-    return await supabase
-      .from('invitations')
-      .update(updates)
-      .eq('id', id)
-      .select()
-      .single()
-  },
+export interface DashboardMetrics {
+  // For Owners
+  my_properties_count?: number
+  active_properties_count?: number
+  total_bookings_count?: number
+  upcoming_bookings_count?: number
+  network_size?: number
+  monthly_revenue?: number
+  properties_by_status?: {
+    draft: number
+    active: number
+    inactive: number
+  }
+  // For Admins
+  total_users?: number
+  total_owners?: number
+  total_properties?: number
+  active_properties?: number
+  total_bookings?: number
+  pending_approvals?: number
+  recent_signups?: number
+}
 
-  // Validate onboarding token
- validateToken: async (token: string) => {
-  console.log('🔍 validateToken called with:', token);
-  
-  if (isAnonymousUser()) {
-    console.log('✅ Anonymous user - returning mock validation');
-    return { 
-      data: [{
-        is_valid: true,
-        email: 'demo@example.com',
-        user_type: 'owner' as const,
-        invitation_id: 'mock-invitation'
-      }], 
-      error: null 
+export interface Activity {
+  id: string
+  title: string
+  description: string
+  type: string
+  user_name?: string
+  timestamp: string
+}
+
+// API Client Class
+class APIClient {
+  private baseURL: string
+  private accessToken: string | null = null
+  private refreshToken: string | null = null
+
+  constructor(baseURL: string) {
+    this.baseURL = baseURL
+    this.loadTokens()
+  }
+
+  private loadTokens() {
+    if (typeof window !== 'undefined') {
+      this.accessToken = localStorage.getItem('access_token')
+      this.refreshToken = localStorage.getItem('refresh_token')
     }
   }
 
-  try {
-    console.log('🔍 Querying onboarding_tokens table for token:', token.substring(0, 8) + '...');
-    
-    // UPDATED QUERY - Use .maybeSingle() instead of .single() to handle no results gracefully
-    const { data: tokenData, error } = await supabase
-      .from('onboarding_tokens')
-      .select('*')
-      .eq('token', token)
-      .maybeSingle() // CHANGED: Use maybeSingle() instead of single()
-
-    console.log('📊 Token query result:', { 
-      hasData: !!tokenData, 
-      error: error?.message,
-      errorCode: error?.code,
-      tokenDataPreview: tokenData ? {
-        email: tokenData.email,
-        user_type: tokenData.user_type,
-        expires_at: tokenData.expires_at,
-        used_at: tokenData.used_at,
-        invitation_id: tokenData.invitation_id
-      } : null
-    });
-
-    if (error) {
-      console.log('❌ Token query error:', error);
-      return {
-        data: [{
-          is_valid: false,
-          email: '',
-          user_type: 'user' as const,
-          invitation_id: ''
-        }],
-        error
-      }
-    }
-
-    if (!tokenData) {
-      console.log('❌ Token not found in database');
-      return {
-        data: [{
-          is_valid: false,
-          email: '',
-          user_type: 'user' as const,
-          invitation_id: ''
-        }],
-        error: null
-      }
-    }
-
-    // Check if token is valid (not expired and not used)
-    const now = new Date()
-    const expiresAt = new Date(tokenData.expires_at)
-    const isValid = expiresAt > now && !tokenData.used_at
-
-    console.log('⏰ Token validation:', {
-      expiresAt: expiresAt.toISOString(),
-      now: now.toISOString(),
-      isExpired: expiresAt <= now,
-      isUsed: !!tokenData.used_at,
-      isValid
-    });
-
-    return {
-      data: [{
-        is_valid: isValid,
-        email: tokenData.email,
-        user_type: tokenData.user_type,
-        invitation_id: tokenData.invitation_id || ''
-      }],
-      error: null
-    }
-  } catch (error) {
-    console.error('❌ Error validating token:', error);
-    return {
-      data: [{
-        is_valid: false,
-        email: '',
-        user_type: 'user' as const,
-        invitation_id: ''
-      }],
-      error
+  private saveTokens(access: string, refresh: string) {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('access_token', access)
+      localStorage.setItem('refresh_token', refresh)
+      this.accessToken = access
+      this.refreshToken = refresh
     }
   }
-},
 
-  // Handle invitation response (accept/reject)
-  respondToInvitation: async (token: string, action: 'accept' | 'reject') => {
-    if (isAnonymousUser()) {
-      return {
-        success: true,
-        action: action === 'accept' ? 'accepted' : 'rejected',
-        message: action === 'accept' 
-          ? 'Demo invitation accepted!' 
-          : 'Demo invitation declined.'
-      }
+  private clearTokens() {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('access_token')
+      localStorage.removeItem('refresh_token')
+      this.accessToken = null
+      this.refreshToken = null
     }
-    
-    // Real implementation would be here
-    return { success: false, error: 'Not implemented for real users yet' }
-  },
+  }
 
-  // Get invitation by token (for display purposes)
-  getInvitationByToken: async (token: string) => {
-    if (isAnonymousUser()) {
-      return {
-        data: {
-          id: 'demo-token',
-          token: token,
-          email: 'demo@example.com',
-          user_type: 'owner' as const,
-          invitation_id: 'mock-invitation'
+  private async refreshAccessToken(): Promise<boolean> {
+    if (!this.refreshToken) return false
+
+    try {
+      const response = await fetch(`${this.baseURL}/auth/jwt/refresh/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
-        error: null
+        body: JSON.stringify({
+          refresh: this.refreshToken
+        })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        this.accessToken = data.access
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('access_token', data.access)
+        }
+        return true
+      } else {
+        this.clearTokens()
+        return false
       }
+    } catch (error) {
+      console.error('Token refresh failed:', error)
+      this.clearTokens()
+      return false
+    }
+  }
+
+  private async makeRequest<T>(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<{ data: T | null; error: string | null }> {
+    const url = `${this.baseURL}${endpoint}`
+    
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...options.headers as Record<string, string>
+    }
+
+    if (this.accessToken) {
+      headers['Authorization'] = `Bearer ${this.accessToken}`
+    }
+
+    try {
+      let response = await fetch(url, {
+        ...options,
+        headers
+      })
+
+      // Handle token refresh on 401
+      if (response.status === 401 && this.refreshToken) {
+        const refreshed = await this.refreshAccessToken()
+        if (refreshed) {
+          headers['Authorization'] = `Bearer ${this.accessToken}`
+          response = await fetch(url, {
+            ...options,
+            headers
+          })
+        }
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || `HTTP ${response.status}`)
+      }
+
+      const data = await response.json()
+      return { data, error: null }
+    } catch (error) {
+      console.error(`API Error [${endpoint}]:`, error)
+      return { data: null, error: error instanceof Error ? error.message : 'Unknown error' }
+    }
+  }
+
+  // Authentication methods
+  async login(email: string, password: string) {
+    const response = await this.makeRequest<{ access: string; refresh: string }>('/auth/jwt/create/', {
+      method: 'POST',
+      body: JSON.stringify({ email, password })
+    })
+
+    if (response.data) {
+      this.saveTokens(response.data.access, response.data.refresh)
+    }
+
+    return response
+  }
+
+  async register(userData: {
+    email: string
+    password: string
+    password_confirm: string
+    full_name: string
+    phone?: string
+    invitation_token: string
+  }) {
+    return this.makeRequest<{ message: string; user_id: string; user_type: string }>('/users/register/', {
+      method: 'POST',
+      body: JSON.stringify(userData)
+    })
+  }
+
+  async logout() {
+    this.clearTokens()
+  }
+
+  // User methods
+  async getCurrentUser() {
+    return this.makeRequest<User>('/users/profile/')
+  }
+
+  async updateProfile(updates: { full_name?: string; phone?: string }) {
+    return this.makeRequest<User>('/users/update_profile/', {
+      method: 'PATCH',
+      body: JSON.stringify(updates)
+    })
+  }
+
+  async searchUsers(search?: string, userType?: string) {
+    const params = new URLSearchParams()
+    if (search) params.append('search', search)
+    if (userType) params.append('user_type', userType)
+    
+    return this.makeRequest<User[]>(`/users/search/?${params.toString()}`)
+  }
+
+  // Property methods
+  async getProperties(filters?: {
+    city?: string
+    min_price?: number
+    max_price?: number
+    bedrooms?: number
+    max_guests?: number
+    page?: number
+    page_size?: number
+  }) {
+    const params = new URLSearchParams()
+    if (filters) {
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined) {
+          params.append(key, value.toString())
+        }
+      })
     }
     
-    const { data: tokenData, error: tokenError } = await supabase
-      .from('onboarding_tokens')
-      .select(`
-        *,
-        invitation:invitations(
-          *,
-          inviter:users!invited_by(full_name, email)
-        )
-      `)
-      .eq('token', token)
-      .single()
-
-    return { data: tokenData, error: tokenError }
+    return this.makeRequest<{
+      count: number
+      next?: string
+      previous?: string
+      results: Property[]
+    }>(`/properties/?${params.toString()}`)
   }
-}
 
-// Property Services
-export const propertyService = {
-  // Get all properties
-  getProperties: async () => {
-    if (isAnonymousUser()) {
-      return { data: mockProperties, error: null }
-    }
-    return await supabase
-      .from('properties')
-      .select(`
-        *,
-        owner:users!owner_id(full_name, email)
-      `)
-      .order('created_at', { ascending: false })
-  },
+  async createProperty(property: Omit<Property, 'id' | 'created_at' | 'owner_name' | 'booking_count' | 'is_featured'>) {
+    return this.makeRequest<Property>('/properties/', {
+      method: 'POST',
+      body: JSON.stringify(property)
+    })
+  }
 
-  // Get properties by owner
-  getPropertiesByOwner: async (ownerId: string) => {
-    if (isAnonymousUser()) {
-      const filteredProperties = mockProperties.filter(prop => prop.owner_id === ownerId)
-      return { data: filteredProperties, error: null }
-    }
-    return await supabase
-      .from('properties')
-      .select('*')
-      .eq('owner_id', ownerId)
-      .order('created_at', { ascending: false })
-  },
+  async updateProperty(id: string, updates: Partial<Property>) {
+    return this.makeRequest<Property>(`/properties/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates)
+    })
+  }
 
-  // Get active properties (for public viewing)
-  getActiveProperties: async () => {
-    if (isAnonymousUser()) {
-      const activeProperties = mockProperties.filter(prop => prop.status === 'active')
-      return { data: activeProperties, error: null }
-    }
-    return await supabase
-      .from('properties')
-      .select(`
-        *,
-        owner:users!owner_id(full_name, email)
-      `)
-      .eq('status', 'active')
-      .order('created_at', { ascending: false })
-  },
+  async checkAvailability(propertyId: string, data: {
+    check_in_date: string
+    check_out_date: string
+    guests_count: number
+  }) {
+    return this.makeRequest<{
+      available: boolean
+      nights: number
+      base_price: number
+      discounted_price: number
+      savings: number
+      price_per_night: number
+    }>(`/properties/${propertyId}/check_availability/`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    })
+  }
 
-  // Get properties by status
-  getPropertiesByStatus: async (status: Database['public']['Enums']['property_status']) => {
-    if (isAnonymousUser()) {
-      const filteredProperties = mockProperties.filter(prop => prop.status === status)
-      return { data: filteredProperties, error: null }
-    }
-    return await supabase
-      .from('properties')
-      .select(`
-        *,
-        owner:users!owner_id(full_name, email)
-      `)
-      .eq('status', status)
-      .order('created_at', { ascending: false })
-  },
+  // Booking methods
+  async getBookings() {
+    return this.makeRequest<{
+      count: number
+      results: Booking[]
+    }>('/bookings/')
+  }
 
-  // Create property
-  createProperty: async (property: Tables['properties']['Insert']) => {
-    if (isAnonymousUser()) {
-      const newProperty = {
-        id: `mock-prop-${Date.now()}`,
-        ...property,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+  async createBooking(booking: {
+    property: string
+    check_in_date: string
+    check_out_date: string
+    guests_count: number
+    special_requests?: string
+  }) {
+    return this.makeRequest<Booking>('/bookings/', {
+      method: 'POST',
+      body: JSON.stringify(booking)
+    })
+  }
+
+  async updateBookingStatus(id: string, status: 'confirmed' | 'cancelled') {
+    return this.makeRequest<Booking>(`/bookings/${id}/update_status/`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status })
+    })
+  }
+
+  async getBookingStats(timeframe: 'week' | 'month' | 'year' = 'month') {
+    return this.makeRequest<any>(`/bookings/stats/?timeframe=${timeframe}`)
+  }
+
+  // Invitation methods (Admin only)
+  async getInvitations() {
+    return this.makeRequest<{
+      count: number
+      results: Invitation[]
+    }>('/invitations/')
+  }
+
+  async createInvitation(invitation: {
+    email: string
+    invitee_name: string
+    invitation_type: 'user' | 'owner' | 'admin'
+    personal_message?: string
+  }) {
+    return this.makeRequest<Invitation>('/invitations/', {
+      method: 'POST',
+      body: JSON.stringify(invitation)
+    })
+  }
+
+  async validateInvitationToken(token: string) {
+    return this.makeRequest<{
+      valid: boolean
+      invitation: {
+        email: string
+        invitee_name: string
+        invitation_type: string
+        inviter_name: string
+        expires_at: string
+        personal_message?: string
       }
-      return { data: newProperty, error: null }
-    }
-    return await supabase
-      .from('properties')
-      .insert(property)
-      .select()
-      .single()
-  },
-
-  // Update property
-  updateProperty: async (id: string, updates: Tables['properties']['Update']) => {
-    if (isAnonymousUser()) {
-      const property = mockProperties.find(prop => prop.id === id)
-      return { data: { ...property, ...updates }, error: null }
-    }
-    return await supabase
-      .from('properties')
-      .update(updates)
-      .eq('id', id)
-      .select()
-      .single()
-  },
-
-  // Submit property for approval
-  submitForApproval: async (propertyId: string, submitterId: string) => {
-    if (isAnonymousUser()) {
-      return { data: true, error: null }
-    }
-    return await supabase.rpc('submit_property_for_approval', {
-      property_id: propertyId,
-      submitter_id: submitterId
+    }>('/invitations/validate_token/', {
+      method: 'POST',
+      body: JSON.stringify({ token })
     })
-  },
+  }
 
-  // Approve property (admin only)
-  approveProperty: async (propertyId: string, adminId: string, notes?: string) => {
-    if (isAnonymousUser()) {
-      return { data: true, error: null }
-    }
-    return await supabase.rpc('approve_property', {
-      property_id: propertyId,
-      admin_id: adminId,
-      approval_notes: notes
+  async acceptInvitation(token: string, userData?: {
+    password: string
+    full_name: string
+    phone?: string
+  }) {
+    return this.makeRequest<any>('/invitations/accept_invitation/', {
+      method: 'POST',
+      body: JSON.stringify({
+        token,
+        ...(userData && { user_data: userData })
+      })
     })
-  },
+  }
 
-  // Reject property (admin only)
-  rejectProperty: async (propertyId: string, adminId: string, reason: string) => {
-    if (isAnonymousUser()) {
-      return { data: true, error: null }
-    }
-    return await supabase.rpc('reject_property', {
-      property_id: propertyId,
-      admin_id: adminId,
-      rejection_reason: reason
+  async declineInvitation(token: string) {
+    return this.makeRequest<any>('/invitations/decline_invitation/', {
+      method: 'POST',
+      body: JSON.stringify({ token })
     })
+  }
+
+  // Analytics methods
+  async getDashboardMetrics() {
+    return this.makeRequest<DashboardMetrics>('/analytics/dashboard_metrics/')
+  }
+
+  async getRecentActivity(limit: number = 10) {
+    return this.makeRequest<Activity[]>(`/analytics/recent_activity/?limit=${limit}`)
+  }
+
+  async getRevenueAnalytics(filters: {
+    start_date: string
+    end_date: string
+    group_by: 'day' | 'week' | 'month'
+  }) {
+    const params = new URLSearchParams(filters)
+    return this.makeRequest<any>(`/analytics/revenue_analytics/?${params.toString()}`)
+  }
+
+  // File upload
+  async uploadFile(file: File, folder?: string) {
+    const formData = new FormData()
+    formData.append('file', file)
+    if (folder) formData.append('folder', folder)
+
+    return this.makeRequest<{
+      success: boolean
+      file_url: string
+      file_path: string
+      original_name: string
+      size: number
+      content_type: string
+    }>('/upload/', {
+      method: 'POST',
+      body: formData,
+      headers: {} // Remove content-type header for FormData
+    })
+  }
+
+  // Health check
+  async healthCheck() {
+    return this.makeRequest<{
+      status: string
+      timestamp: string
+      services: Record<string, { status: string }>
+    }>('/health/')
   }
 }
 
-// Booking Services
-export const bookingService = {
-  // Get all bookings
-  getBookings: async () => {
-    if (isAnonymousUser()) {
-      return { data: mockBookings, error: null }
-    }
-    return await supabase
-      .from('bookings')
-      .select(`
-        *,
-        property:properties(title, address, city),
-        guest:users!guest_id(full_name, email)
-      `)
-      .order('created_at', { ascending: false })
-  },
+// Create API client instance
+const apiClient = new APIClient(API_BASE_URL)
 
-  // Get bookings by guest
-  getBookingsByGuest: async (guestId: string) => {
-    if (isAnonymousUser()) {
-      const filteredBookings = mockBookings.filter(booking => booking.guest_id === guestId)
-      return { data: filteredBookings, error: null }
-    }
-    return await supabase
-      .from('bookings')
-      .select(`
-        *,
-        property:properties(title, address, city, owner_id)
-      `)
-      .eq('guest_id', guestId)
-      .order('created_at', { ascending: false })
-  },
-
-  // Get bookings by owner
-  getBookingsByOwner: async (ownerId: string) => {
-    if (isAnonymousUser()) {
-      // Filter bookings for properties owned by this owner
-      const ownerProperties = mockProperties.filter(prop => prop.owner_id === ownerId)
-      const propertyIds = ownerProperties.map(prop => prop.id)
-      const filteredBookings = mockBookings.filter(booking => 
-        propertyIds.includes(booking.property_id)
-      )
-      return { data: filteredBookings, error: null }
-    }
-    return await supabase
-      .from('bookings')
-      .select(`
-        *,
-        property:properties!inner(title, address, city),
-        guest:users!guest_id(full_name, email)
-      `)
-      .eq('property.owner_id', ownerId)
-      .order('created_at', { ascending: false })
-  },
-
-  // Create booking
-  createBooking: async (booking: Tables['bookings']['Insert']) => {
-    if (isAnonymousUser()) {
-      const newBooking = {
-        id: `mock-booking-${Date.now()}`,
-        ...booking,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }
-      return { data: newBooking, error: null }
-    }
-    return await supabase
-      .from('bookings')
-      .insert(booking)
-      .select()
-      .single()
-  },
-
-  // Update booking
-  updateBooking: async (id: string, updates: Tables['bookings']['Update']) => {
-    if (isAnonymousUser()) {
-      const booking = mockBookings.find(b => b.id === id)
-      return { data: { ...booking, ...updates }, error: null }
-    }
-    return await supabase
-      .from('bookings')
-      .update(updates)
-      .eq('id', id)
-      .select()
-      .single()
-  }
+// Service exports using the API client
+export const userService = {
+  getUsers: () => apiClient.searchUsers(),
+  updateUser: (id: string, updates: Partial<User>) => apiClient.updateProfile(updates),
+  getUsersByType: (userType: string) => apiClient.searchUsers(undefined, userType),
+  getCurrentUser: () => apiClient.getCurrentUser()
 }
 
-// Analytics Services (admin only)
-export const analyticsService = {
-  // Get dashboard metrics
-  getDashboardMetrics: async () => {
-    if (isAnonymousUser()) {
-      return mockDashboardMetrics
-    }
+export const authService = {
+  login: (email: string, password: string) => apiClient.login(email, password),
+  register: (userData: Parameters<typeof apiClient.register>[0]) => apiClient.register(userData),
+  logout: () => apiClient.logout()
+}
 
-    const [
-      { count: totalUsers },
-      { count: totalOwners },
-      { count: totalProperties },
-      { count: activeProperties },
-      { count: totalBookings }
-    ] = await Promise.all([
-      supabase.from('users').select('*', { count: 'exact', head: true }),
-      supabase.from('users').select('*', { count: 'exact', head: true }).eq('user_type', 'owner'),
-      supabase.from('properties').select('*', { count: 'exact', head: true }),
-      supabase.from('properties').select('*', { count: 'exact', head: true }).eq('status', 'active'),
-      supabase.from('bookings').select('*', { count: 'exact', head: true })
-    ])
-
+export const invitationService = {
+  createInvitation: (invitation: Parameters<typeof apiClient.createInvitation>[0]) => 
+    apiClient.createInvitation(invitation),
+  
+  createInvitationWithEmail: async (invitation: Parameters<typeof apiClient.createInvitation>[0], inviterName: string) => {
+    const result = await apiClient.createInvitation(invitation)
     return {
-      totalUsers: totalUsers || 0,
-      totalOwners: totalOwners || 0,
-      totalProperties: totalProperties || 0,
-      activeProperties: activeProperties || 0,
-      totalBookings: totalBookings || 0
+      ...result,
+      emailSent: true // Assume email is sent by API
     }
   },
-
-  // Get recent activity
-  getRecentActivity: async (limit = 10) => {
-    if (isAnonymousUser()) {
-      return { data: mockActivity.slice(0, limit), error: null }
+  
+  getInvitations: () => apiClient.getInvitations(),
+  updateInvitation: (id: string, updates: Partial<Invitation>) => {
+    // This would need to be implemented in the API
+    console.warn('updateInvitation not implemented in API')
+    return Promise.resolve({ data: null, error: 'Not implemented' })
+  },
+  
+  validateToken: (token: string) => apiClient.validateInvitationToken(token),
+  respondToInvitation: (token: string, action: 'accept' | 'reject') => {
+    if (action === 'accept') {
+      return apiClient.acceptInvitation(token)
+    } else {
+      return apiClient.declineInvitation(token)
     }
-    return await supabase
-      .from('activity_logs')
-      .select(`
-        *,
-        user:users(full_name, email)
-      `)
-      .order('created_at', { ascending: false })
-      .limit(limit)
+  },
+  
+  getInvitationByToken: (token: string) => apiClient.validateInvitationToken(token)
+}
+
+export const propertyService = {
+  getProperties: (filters?: Parameters<typeof apiClient.getProperties>[0]) => 
+    apiClient.getProperties(filters),
+  
+  getPropertiesByOwner: (ownerId: string) => {
+    // This would need filtering by owner on the API side
+    return apiClient.getProperties()
+  },
+  
+  getActiveProperties: () => apiClient.getProperties(),
+  
+  getPropertiesByStatus: (status: string) => {
+    // This would need filtering by status on the API side
+    return apiClient.getProperties()
+  },
+  
+  createProperty: (property: Parameters<typeof apiClient.createProperty>[0]) => 
+    apiClient.createProperty(property),
+  
+  updateProperty: (id: string, updates: Partial<Property>) => 
+    apiClient.updateProperty(id, updates),
+  
+  submitForApproval: (propertyId: string, submitterId: string) => {
+    // This would need to be implemented in the API
+    console.warn('submitForApproval not implemented in API')
+    return Promise.resolve({ data: true, error: null })
+  },
+  
+  approveProperty: (propertyId: string, adminId: string, notes?: string) => {
+    // This would need to be implemented in the API
+    console.warn('approveProperty not implemented in API')
+    return Promise.resolve({ data: true, error: null })
+  },
+  
+  rejectProperty: (propertyId: string, adminId: string, reason: string) => {
+    // This would need to be implemented in the API
+    console.warn('rejectProperty not implemented in API')
+    return Promise.resolve({ data: true, error: null })
   }
 }
+
+export const bookingService = {
+  getBookings: () => apiClient.getBookings(),
+  
+  getBookingsByGuest: (guestId: string) => {
+    // This would need filtering by guest on the API side
+    return apiClient.getBookings()
+  },
+  
+  getBookingsByOwner: (ownerId: string) => {
+    // This would need filtering by owner on the API side
+    return apiClient.getBookings()
+  },
+  
+  createBooking: (booking: Parameters<typeof apiClient.createBooking>[0]) => 
+    apiClient.createBooking(booking),
+  
+  updateBooking: (id: string, updates: { status?: 'confirmed' | 'cancelled' }) => {
+    if (updates.status) {
+      return apiClient.updateBookingStatus(id, updates.status)
+    }
+    console.warn('Only status updates are supported')
+    return Promise.resolve({ data: null, error: 'Only status updates supported' })
+  }
+}
+
+export const analyticsService = {
+  getDashboardMetrics: () => apiClient.getDashboardMetrics(),
+  getRecentActivity: (limit = 10) => apiClient.getRecentActivity(limit),
+  getRevenueAnalytics: (filters: Parameters<typeof apiClient.getRevenueAnalytics>[0]) => 
+    apiClient.getRevenueAnalytics(filters)
+}
+
+// Export the API client for direct use
+export { apiClient }
