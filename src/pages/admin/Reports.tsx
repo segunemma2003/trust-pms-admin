@@ -1,4 +1,4 @@
-
+import { useState, useEffect } from "react";
 import Layout from "@/components/layout/Layout";
 import Sidebar from "@/components/layout/Sidebar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,47 +20,65 @@ import {
   CartesianGrid,
   Legend,
 } from "recharts";
-
-// Mock data for charts
-const revenueData = [
-  { month: "Jan", revenue: 2500 },
-  { month: "Feb", revenue: 3200 },
-  { month: "Mar", revenue: 4100 },
-  { month: "Apr", revenue: 3800 },
-  { month: "May", revenue: 5200 },
-  { month: "Jun", revenue: 6100 },
-];
-
-const bookingData = [
-  { month: "Jan", bookings: 32 },
-  { month: "Feb", bookings: 45 },
-  { month: "Mar", bookings: 58 },
-  { month: "Apr", bookings: 52 },
-  { month: "May", bookings: 68 },
-  { month: "Jun", bookings: 72 },
-];
-
-const propertiesData = [
-  { category: "Apartments", count: 45 },
-  { category: "Houses", count: 28 },
-  { category: "Villas", count: 15 },
-  { category: "Cabins", count: 12 },
-  { category: "Other", count: 5 },
-];
-
-const locationData = [
-  { name: "New York", value: 35 },
-  { name: "Miami", value: 25 },
-  { name: "Los Angeles", value: 20 },
-  { name: "Chicago", value: 15 },
-  { name: "Other", value: 5 },
-];
+import { useAuth } from "@/contexts/AuthContext";
 
 const COLORS = ["#FF5A5F", "#00A699", "#FC642D", "#484848", "#767676"];
 
 const Reports = () => {
+  const [revenueData, setRevenueData] = useState([]);
+  const [bookingData, setBookingData] = useState([]);
+  const [propertiesData, setPropertiesData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+
+  useEffect(() => {
+    const fetchAnalytics = async () => {
+      setLoading(true);
+      const token = localStorage.getItem('access_token');
+      if (!token) return;
+      // Revenue analytics
+      const revenueRes = await fetch(`/api/analytics/revenue_analytics/?start_date=2025-01-01&end_date=2025-12-31&group_by=month`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (revenueRes.ok) {
+        const data = await revenueRes.json();
+        setRevenueData(data.data.map((item: any) => ({ month: item.period, revenue: item.revenue })));
+        setBookingData(data.data.map((item: any) => ({ month: item.period, bookings: item.bookings_count })));
+      }
+      // Property types
+      const propertiesRes = await fetch(`/api/properties/?page=1&page_size=1000`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (propertiesRes.ok) {
+        const data = await propertiesRes.json();
+        const typeCounts: Record<string, number> = {};
+        (data.results || []).forEach((prop: any) => {
+          const type = prop.property_type || 'Other';
+          typeCounts[type] = (typeCounts[type] || 0) + 1;
+        });
+        setPropertiesData(Object.entries(typeCounts).map(([category, count]) => ({ category, count })));
+      }
+      setLoading(false);
+    };
+    fetchAnalytics();
+  }, []);
+
+  if (loading) {
+    return (
+      <Layout hideFooter>
+        <div className="flex">
+          <Sidebar type="admin" />
+          <div className="flex-1 p-6 overflow-y-auto">
+            <div className="flex items-center justify-center h-64">
+              Loading analytics...
+            </div>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
   return (
-    <Layout userType="admin" hideFooter>
+    <Layout hideFooter>
       <div className="flex">
         <Sidebar type="admin" />
         
@@ -222,21 +240,22 @@ const Reports = () => {
                   <CardContent>
                     <div className="h-80">
                       <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
+                        <PieChart width={400} height={300}>
                           <Pie
-                            data={locationData}
+                            data={propertiesData}
+                            dataKey="count"
+                            nameKey="category"
                             cx="50%"
                             cy="50%"
                             outerRadius={100}
                             fill="#8884d8"
-                            dataKey="value"
-                            label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                            label
                           >
-                            {locationData.map((entry, index) => (
+                            {propertiesData.map((entry, index) => (
                               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                             ))}
                           </Pie>
-                          <Tooltip formatter={(value) => [`${value} properties`, 'Count']} />
+                          <Tooltip />
                         </PieChart>
                       </ResponsiveContainer>
                     </div>

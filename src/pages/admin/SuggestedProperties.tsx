@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Layout from "@/components/layout/Layout";
 import Sidebar from "@/components/layout/Sidebar";
@@ -29,6 +29,7 @@ import {
   Upload
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { useAuth } from "@/contexts/AuthContext";
 
 const SuggestedProperties = () => {
   const navigate = useNavigate();
@@ -40,6 +41,8 @@ const SuggestedProperties = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [beds24Id, setBeds24Id] = useState("");
   const [showUploadReceipt, setShowUploadReceipt] = useState(false);
+  const [suggestedProperties, setSuggestedProperties] = useState([]);
+  const { user } = useAuth();
 
   const handleViewProperty = (property: any) => {
     setSelectedProperty(property);
@@ -101,6 +104,27 @@ const SuggestedProperties = () => {
     a.click();
   };
 
+  useEffect(() => {
+    const fetchSuggestedProperties = async () => {
+      const token = localStorage.getItem('access_token');
+      if (!token) return;
+      // Assuming suggested properties are those with a specific status or flag
+      const response = await fetch(`/api/properties/?status=pending&page=1&page_size=100`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setSuggestedProperties(data.results || []);
+      } else {
+        setSuggestedProperties([]);
+      }
+    };
+    fetchSuggestedProperties();
+  }, []);
+
   return (
     <Layout hideFooter>
       <div className="flex">
@@ -117,7 +141,61 @@ const SuggestedProperties = () => {
           </div>
           
           <div className="grid grid-cols-1 gap-6">
-            {/* Placeholder for API-based fetching */}
+            {suggestedProperties.length === 0 ? (
+              <div className="text-center py-8 text-airbnb-light">No suggested properties found.</div>
+            ) : (
+              suggestedProperties.map((property: any) => (
+                <Card key={property.id} className="overflow-hidden">
+                  <div className="flex flex-col md:flex-row">
+                    <div className="w-full md:w-64 h-48 md:h-auto">
+                      <img 
+                        src={property.images?.[0]?.image_url || ''} 
+                        alt={property.title} 
+                        className="w-full h-full object-cover" 
+                      />
+                    </div>
+                    <div className="flex-1 p-6">
+                      <div className="flex flex-col md:flex-row md:items-start md:justify-between">
+                        <div>
+                          <h3 className="text-xl font-bold">{property.title}</h3>
+                          <p className="text-sm text-airbnb-light flex items-center mt-1">
+                            <MapPin className="h-3.5 w-3.5 mr-1" />
+                            {property.city}, {property.state}
+                          </p>
+                        </div>
+                        <Badge className="mt-2 md:mt-0 bg-yellow-100 text-yellow-800 self-start">
+                          {property.status.charAt(0).toUpperCase() + property.status.slice(1)}
+                        </Badge>
+                      </div>
+                      <div className="flex flex-wrap gap-3 mt-3">
+                        <div className="flex items-center text-sm">
+                          <Bed className="h-4 w-4 mr-1 text-airbnb-light" />
+                          {property.bedrooms} beds
+                        </div>
+                        <div className="flex items-center text-sm">
+                          <Bath className="h-4 w-4 mr-1 text-airbnb-light" />
+                          {property.bathrooms} baths
+                        </div>
+                        <div className="flex items-center text-sm">
+                          <User className="h-4 w-4 mr-1 text-airbnb-light" />
+                          {property.max_guests} guests
+                        </div>
+                        <div className="text-sm font-medium">
+                          ${property.display_price || property.price_per_night}/night
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 mt-3 text-sm">
+                        <strong>Owner:</strong> {property.owner_name} ({property.owner_email})
+                      </div>
+                      <div className="line-clamp-2 text-sm mt-3">
+                        {property.description}
+                      </div>
+                      {/* Only view, no actions */}
+                    </div>
+                  </div>
+                </Card>
+              ))
+            )}
           </div>
           
           {/* Property Detail Dialog */}
