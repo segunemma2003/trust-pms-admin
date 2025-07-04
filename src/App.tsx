@@ -9,7 +9,6 @@ import NotFound from "./pages/NotFound";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import InvitationsPage from "./pages/admin/InvitationsPage";
 import ManageProperties from "./pages/admin/ManageProperties";
-import PaymentRequests from "./pages/admin/PaymentRequests";
 import ManageOwners from "./pages/admin/ManageOwners";
 import UserManagement from "./pages/admin/UserManagement";
 import Reports from "./pages/admin/Reports";
@@ -110,11 +109,6 @@ const AppRoutes = () => {
         <Route path="/admin/properties" element={
           <AdminProtectedRoute>
             <ManageProperties />
-          </AdminProtectedRoute>
-        } />
-        <Route path="/admin/payments" element={
-          <AdminProtectedRoute>
-            <PaymentRequests />
           </AdminProtectedRoute>
         } />
         <Route path="/admin/owners" element={
