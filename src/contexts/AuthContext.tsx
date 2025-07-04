@@ -219,7 +219,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const refreshToken = localStorage.getItem('refresh_token')
       if (refreshToken) {
-        // Optional: Call logout endpoint to invalidate token server-side
+        // Call logout endpoint to invalidate token server-side
         await fetch(`${API_BASE_URL}/auth/logout/`, {
           method: 'POST',
           headers: {
