@@ -1,5 +1,5 @@
 // API Configuration
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://your-domain.com/api'
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.oifyk.com/api'
 
 // Types based on your API documentation
 export interface User {
