@@ -50,6 +50,7 @@ import {
   Cell,
 } from "recharts";
 import { useAuth } from "@/contexts/AuthContext";
+import { analyticsService, invitationService } from "@/services/api";
 
 const AdminDashboard = () => {
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
@@ -83,23 +84,22 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     const fetchDashboard = async () => {
-      const token = localStorage.getItem('access_token');
-      if (!token) return;
-      const [metricsRes, activityRes, invitationsRes] = await Promise.all([
-        fetch(`/api/analytics/dashboard_metrics/`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        }),
-        fetch(`/api/analytics/recent_activity/?limit=5`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        }),
-        fetch(`/api/invitations/`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        })
-      ]);
-      if (metricsRes.ok) setMetrics(await metricsRes.json());
-      if (activityRes.ok) setRecentActivity((await activityRes.json()).results || []);
-      if (invitationsRes.ok) setInvitations((await invitationsRes.json()).results || []);
+      try {
+        // Use API client instead of direct fetch
+        const [metricsResult, activityResult, invitationsResult] = await Promise.all([
+          analyticsService.getDashboardMetrics(),
+          analyticsService.getRecentActivity(5),
+          invitationService.getInvitations()
+        ]);
+        
+        if (metricsResult.data) setMetrics(metricsResult.data);
+        if (activityResult.data) setRecentActivity(activityResult.data);
+        if (invitationsResult.data) setInvitations(invitationsResult.data.results || []);
+      } catch (error) {
+        console.error('Failed to fetch dashboard data:', error);
+      }
     };
+    
     fetchDashboard();
   }, []);
 
@@ -108,25 +108,23 @@ const AdminDashboard = () => {
     if (!inviteForm.name.trim() || !inviteForm.email.trim()) {
       return;
     }
-    const token = localStorage.getItem('access_token');
-    if (!token) return;
-    const response = await fetch(`/api/invitations/`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+    
+    try {
+      // Use API client instead of direct fetch
+      const result = await invitationService.createInvitation({
         email: inviteForm.email,
         invitee_name: inviteForm.name,
         invitation_type: inviteForm.invitationType,
         personal_message: inviteForm.message
-      })
-    });
-    if (response.ok) {
-      setIsInviteModalOpen(false);
-      setInviteForm({ name: '', email: '', invitationType: 'owner', message: '' });
-      // Optionally refetch invitations
+      });
+      
+      if (result.data) {
+        setIsInviteModalOpen(false);
+        setInviteForm({ name: '', email: '', invitationType: 'owner', message: '' });
+        // Optionally refetch invitations
+      }
+    } catch (error) {
+      console.error('Failed to send invitation:', error);
     }
   };
 

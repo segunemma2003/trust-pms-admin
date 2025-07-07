@@ -1,5 +1,5 @@
 // API Configuration
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || process.env.VITE_API_BASE_URL || 'https://api.oifyk.com/api'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://api.oifyk.com/api'
 
 // Types based on your API documentation
 export interface User {

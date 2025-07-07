@@ -36,7 +36,7 @@ export const useAuth = () => {
   return context
 }
 
-const API_BASE_URL =  'https://api.oifyk.com/api'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://api.oifyk.com/api'
 
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
