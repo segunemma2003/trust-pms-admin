@@ -51,6 +51,9 @@ const UserManagement = () => {
     fetchUsers();
   }, [searchQuery]);
 
+
+
+  
   const handleSearch = (query: string) => {
     setSearchQuery(query);
     // API search handled by useEffect

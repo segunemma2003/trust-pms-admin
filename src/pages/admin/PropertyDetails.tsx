@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import Layout from "@/components/layout/Layout";
 import Sidebar from "@/components/layout/Sidebar";
@@ -19,6 +19,7 @@ import {
   Tag
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useProperty, useBookingsByProperty } from "@/hooks/useQueries";
 
 // Component for image gallery with download buttons
 const ImageGallery = ({ images }: { images: string[] }) => {
@@ -62,30 +63,85 @@ const ImageGallery = ({ images }: { images: string[] }) => {
 const PropertyDetails = () => {
   const { id } = useParams<{ id: string }>();
   const [activeTab, setActiveTab] = useState("details");
-  const [property, setProperty] = useState<any>(null);
   const { user } = useAuth();
 
-  useEffect(() => {
-    const fetchProperty = async () => {
-      const token = localStorage.getItem('access_token');
-      if (!token || !id) return;
-      const response = await fetch(`/api/properties/${id}/`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setProperty(data);
-      }
-    };
-    fetchProperty();
-  }, [id]);
+  // Use custom hooks for data fetching
+  const { data: property, isLoading: isLoadingProperty, error: propertyError } = useProperty(id);
+  const { data: bookings, isLoading: isLoadingBookings } = useBookingsByProperty(id);
+
+  // Handle loading states
+  if (isLoadingProperty) {
+    return (
+      <Layout hideFooter>
+        <div className="flex">
+          <Sidebar type="admin" />
+          <div className="flex-1 p-6">
+            <div className="animate-pulse">
+              <div className="h-8 bg-gray-200 rounded w-1/3 mb-4"></div>
+              <div className="h-4 bg-gray-200 rounded w-1/4 mb-8"></div>
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="h-24 bg-gray-200 rounded"></div>
+                ))}
+              </div>
+              <div className="h-96 bg-gray-200 rounded"></div>
+            </div>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  // Handle error states
+  if (propertyError) {
+    return (
+      <Layout hideFooter>
+        <div className="flex">
+          <Sidebar type="admin" />
+          <div className="flex-1 p-6">
+            <div className="text-center py-12">
+              <h2 className="text-xl font-semibold mb-2">Error Loading Property</h2>
+              <p className="text-gray-600 mb-4">
+                {propertyError instanceof Error ? propertyError.message : 'An unexpected error occurred'}
+              </p>
+              <Button variant="outline" asChild>
+                <Link to="/admin/properties">
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back to Properties
+                </Link>
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   if (!property) {
-    return <div className="p-6">Loading property...</div>;
+    return (
+      <Layout hideFooter>
+        <div className="flex">
+          <Sidebar type="admin" />
+          <div className="flex-1 p-6">
+            <div className="text-center py-12">
+              <h2 className="text-xl font-semibold mb-2">Property Not Found</h2>
+              <p className="text-gray-600 mb-4">
+                The property you're looking for doesn't exist or you don't have permission to view it.
+              </p>
+              <Button variant="outline" asChild>
+                <Link to="/admin/properties">
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back to Properties
+                </Link>
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Layout>
+    );
   }
+
+  const bookingsData = bookings || [];
 
   return (
     <Layout hideFooter>
@@ -191,12 +247,13 @@ const PropertyDetails = () => {
                     <div>
                       <h3 className="font-medium mb-2">Owner</h3>
                       <p className="text-sm">{property.owner_name}</p>
-                      <p className="text-xs text-airbnb-light">{property.owner_email}</p>
                     </div>
                     
                     <div>
                       <h3 className="font-medium mb-2">Status</h3>
-                      <Badge className={property.status === 'active' ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}>{property.status}</Badge>
+                      <Badge className={property.status === 'active' ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}>
+                        {property.status}
+                      </Badge>
                     </div>
                   </div>
                   
@@ -212,12 +269,18 @@ const PropertyDetails = () => {
                   <div>
                     <h3 className="font-medium mb-2">Additional Information</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                      <div className="text-airbnb-light">Property Type:</div>
-                      <div>{property.property_type || 'N/A'}</div>
+                      <div className="text-airbnb-light">Address:</div>
+                      <div>{property.address || 'N/A'}</div>
                       <div className="text-airbnb-light">Maximum Guests:</div>
                       <div>{property.max_guests}</div>
-                      <div className="text-airbnb-light">Beds24 ID:</div>
-                      <div>{property.beds24_id || 'N/A'}</div>
+                      <div className="text-airbnb-light">Country:</div>
+                      <div>{property.country}</div>
+                      <div className="text-airbnb-light">Postal Code:</div>
+                      <div>{property.postal_code || 'N/A'}</div>
+                      <div className="text-airbnb-light">Created:</div>
+                      <div>{new Date(property.created_at).toLocaleDateString()}</div>
+                      <div className="text-airbnb-light">Total Bookings:</div>
+                      <div>{property.booking_count}</div>
                     </div>
                   </div>
                 </CardContent>
@@ -233,7 +296,13 @@ const PropertyDetails = () => {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <ImageGallery images={["image1.jpg", "image2.jpg", "image3.jpg"]} />
+                  {property.images && property.images.length > 0 ? (
+                    <ImageGallery images={property.images.map(img => img.image_url)} />
+                  ) : (
+                    <div className="text-center py-8">
+                      <p className="text-gray-500">No images available for this property</p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
@@ -292,7 +361,7 @@ const PropertyDetails = () => {
                     <div className="border rounded-md p-4">
                       <h3 className="font-medium mb-2">Trust Level Assignment</h3>
                       <p className="text-sm">
-                        The owner has assigned 15 users to various trust levels:
+                        The owner has assigned trust levels to various users:
                       </p>
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mt-3">
                         <Badge variant="outline" className="flex items-center justify-center gap-1">
@@ -323,44 +392,74 @@ const PropertyDetails = () => {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-4">
-                    {[1, 2, 3].map((i) => (
-                      <div 
-                        key={i} 
-                        className="border rounded-md p-4 flex flex-col md:flex-row justify-between gap-4"
-                      >
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <Calendar className="h-4 w-4 text-airbnb-light" />
-                            <span className="font-medium">May {20 + i} - May {25 + i}, 2025</span>
+                  {isLoadingBookings ? (
+                    <div className="space-y-4">
+                      {[1, 2, 3].map(i => (
+                        <div key={i} className="border rounded-md p-4 animate-pulse">
+                          <div className="h-4 bg-gray-200 rounded w-1/3 mb-2"></div>
+                          <div className="h-3 bg-gray-200 rounded w-1/4 mb-1"></div>
+                          <div className="h-3 bg-gray-200 rounded w-1/5"></div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : bookingsData.length > 0 ? (
+                    <div className="space-y-4">
+                      {bookingsData.slice(0, 5).map((booking) => (
+                        <div 
+                          key={booking.id} 
+                          className="border rounded-md p-4 flex flex-col md:flex-row justify-between gap-4"
+                        >
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <Calendar className="h-4 w-4 text-airbnb-light" />
+                              <span className="font-medium">
+                                {new Date(booking.check_in_date).toLocaleDateString()} - {new Date(booking.check_out_date).toLocaleDateString()}
+                              </span>
+                            </div>
+                            <div className="mt-1 text-sm">
+                              <span className="text-airbnb-light">Guest: </span>
+                              {booking.guest_name}
+                            </div>
+                            <div className="mt-1 text-sm">
+                              <span className="text-airbnb-light">Guests: </span>
+                              {booking.guests_count}
+                            </div>
+                            <div className="mt-1 text-sm">
+                              <span className="text-airbnb-light">Nights: </span>
+                              {booking.nights}
+                            </div>
                           </div>
-                          <div className="mt-1 text-sm">
-                            <span className="text-airbnb-light">Guest: </span>
-                            {i === 1 ? "Alice Johnson" : i === 2 ? "James Smith" : "Emma Brown"}
-                          </div>
-                          <div className="mt-1 text-sm">
-                            <span className="text-airbnb-light">Trust Level: </span>
-                            {i === 1 ? "Family" : i === 2 ? "Friend" : "First Time"}
+                          <div className="flex flex-col items-end">
+                            <Badge variant={
+                              booking.status === 'confirmed' ? "default" : 
+                              booking.status === 'pending' ? "secondary" : 
+                              booking.status === 'completed' ? "outline" : "destructive"
+                            }>
+                              {booking.status}
+                            </Badge>
+                            <div className="mt-1 font-medium">
+                              ${booking.total_amount}
+                            </div>
+                            {booking.discount_applied > 0 && (
+                              <div className="text-xs text-green-600 mt-1">
+                                ${booking.discount_applied} discount applied
+                              </div>
+                            )}
                           </div>
                         </div>
-                        <div className="flex flex-col items-end">
-                          <Badge variant={i === 1 ? "default" : (i === 2 ? "secondary" : "outline")}>
-                            {i === 1 ? "Confirmed" : i === 2 ? "Upcoming" : "Completed"}
-                          </Badge>
-                          <div className="mt-1 font-medium">
-                            ${180 - i * 20}
-                          </div>
-                          <div className="text-xs text-airbnb-light mt-1">
-                            {i === 1 ? "25% discount" : i === 2 ? "15% discount" : "5% discount"}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                    
-                    <Button variant="outline" className="w-full">
-                      View All Bookings
-                    </Button>
-                  </div>
+                      ))}
+                      
+                      {bookingsData.length > 5 && (
+                        <Button variant="outline" className="w-full">
+                          View All {bookingsData.length} Bookings
+                        </Button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <p className="text-gray-500">No bookings found for this property</p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>

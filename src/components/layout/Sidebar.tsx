@@ -33,7 +33,7 @@ const Sidebar = ({ type }: SidebarProps) => {
     { name: 'Invitations', icon: FileText, path: '/admin/invitations' },
     { name: 'All Properties', icon: Building, path: '/admin/all-properties' },
     { name: 'Suggested Properties', icon: Map, path: '/admin/suggested-properties' },
-    { name: 'Fund Requests', icon: CreditCard, path: '/admin/fund-requests' },
+    // { name: 'Fund Requests', icon: CreditCard, path: '/admin/fund-requests' },
     { name: 'Reports', icon: Book, path: '/admin/reports' },
     { name: 'Settings', icon: Settings, path: '/admin/settings' },
   ];

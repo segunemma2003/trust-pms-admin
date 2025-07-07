@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Layout from "@/components/layout/Layout";
 import Sidebar from "@/components/layout/Sidebar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,6 +33,8 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
+import { useInvitations, useCreateInvitation } from "@/hooks/useQueries";
+import { toast } from "sonner";
 
 const InvitationsPage = () => {
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
@@ -45,31 +47,13 @@ const InvitationsPage = () => {
     invitationType: "owner" as "owner" | "user" | "admin",
     message: ""
   });
-  const [invitations, setInvitations] = useState([]);
-  const [loading, setLoading] = useState(true);
   const { user } = useAuth();
 
-  useEffect(() => {
-    const fetchInvitations = async () => {
-      setLoading(true);
-      const token = localStorage.getItem('access_token');
-      if (!token) return;
-      const response = await fetch(`/api/invitations/`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setInvitations(data.results || []);
-      } else {
-        setInvitations([]);
-      }
-      setLoading(false);
-    };
-    fetchInvitations();
-  }, []);
+  // Use the custom hooks instead of direct API calls
+  const { data: invitationsData, isLoading, error } = useInvitations();
+  const createInvitationMutation = useCreateInvitation();
+
+  const invitations = invitationsData?.data?.results || [];
 
   const handleInputChange = (field: string, value: string) => {
     setInviteForm(prev => ({
@@ -80,37 +64,43 @@ const InvitationsPage = () => {
 
   const handleInviteSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
     if (!inviteForm.name.trim() || !inviteForm.email.trim()) {
+      toast.error("Please fill in all required fields");
       return;
     }
-    const token = localStorage.getItem('access_token');
-    if (!token) return;
-    const response = await fetch(`/api/invitations/`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+
+    try {
+      await createInvitationMutation.mutateAsync({
         email: inviteForm.email,
         invitee_name: inviteForm.name,
         invitation_type: inviteForm.invitationType,
-        personal_message: inviteForm.message
-      })
-    });
-    if (response.ok) {
+        personal_message: inviteForm.message || undefined
+      });
+
+      // Reset form and close modal
       setIsInviteModalOpen(false);
       setInviteForm({ name: '', email: '', invitationType: 'owner', message: '' });
-      // Optionally refetch invitations
+    } catch (error) {
+      // Error handling is already done in the mutation
+      console.error('Failed to create invitation:', error);
     }
   };
 
   const handleResendInvitation = async (invitationId: string) => {
-    alert('Resend invitation is not implemented yet.');
+    setResendingInvitationId(invitationId);
+    try {
+      // This would need to be implemented in the API service
+      toast.info('Resend invitation feature is not yet implemented');
+    } catch (error) {
+      toast.error('Failed to resend invitation');
+    } finally {
+      setResendingInvitationId(null);
+    }
   };
 
   // Filter invitations based on search and status
-  const filteredInvitations = (invitations || []).filter((invitation: any) => {
+  const filteredInvitations = invitations.filter((invitation: any) => {
     const matchesSearch = searchQuery === "" || 
       invitation.invitee_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       invitation.email.toLowerCase().includes(searchQuery.toLowerCase());
@@ -144,12 +134,14 @@ const InvitationsPage = () => {
   };
 
   const getInviterName = (invitation: any) => {
-    return invitation.invited_by_user?.full_name || 
+    return invitation.invited_by_name || 
+           invitation.invited_by_user?.full_name || 
            invitation.invited_by_user?.email || 
            'Unknown';
   };
 
-  if (loading) {
+  // Handle loading state
+  if (isLoading) {
     return (
       <Layout hideFooter>
         <div className="flex">
@@ -157,6 +149,27 @@ const InvitationsPage = () => {
           <div className="flex-1 p-6 overflow-y-auto">
             <div className="flex items-center justify-center h-64">
               <Loader2 className="h-8 w-8 animate-spin text-airbnb-primary" />
+            </div>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  // Handle error state
+  if (error) {
+    return (
+      <Layout hideFooter>
+        <div className="flex">
+          <Sidebar type="admin" />
+          <div className="flex-1 p-6 overflow-y-auto">
+            <div className="flex items-center justify-center h-64">
+              <div className="text-center">
+                <p className="text-red-600 mb-4">Failed to load invitations</p>
+                <Button onClick={() => window.location.reload()}>
+                  Retry
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -260,8 +273,13 @@ const InvitationsPage = () => {
                     <Button 
                       type="submit" 
                       className="bg-airbnb-primary hover:bg-airbnb-primary/90"
+                      disabled={createInvitationMutation.isPending}
                     >
-                      <Send className="h-4 w-4 mr-2" />
+                      {createInvitationMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Send className="h-4 w-4 mr-2" />
+                      )}
                       Send Invitation
                     </Button>
                   </DialogFooter>
@@ -344,19 +362,19 @@ const InvitationsPage = () => {
                     </div>
                     <div className="bg-yellow-50 p-3 rounded-lg text-center">
                       <div className="text-2xl font-bold text-yellow-600">
-                        {invitations.filter(inv => inv.status === 'pending').length}
+                        {invitations.filter((inv: any) => inv.status === 'pending').length}
                       </div>
                       <div className="text-sm text-yellow-600">Pending</div>
                     </div>
                     <div className="bg-green-50 p-3 rounded-lg text-center">
                       <div className="text-2xl font-bold text-green-600">
-                        {invitations.filter(inv => inv.status === 'accepted').length}
+                        {invitations.filter((inv: any) => inv.status === 'accepted').length}
                       </div>
                       <div className="text-sm text-green-600">Accepted</div>
                     </div>
                     <div className="bg-red-50 p-3 rounded-lg text-center">
                       <div className="text-2xl font-bold text-red-600">
-                        {invitations.filter(inv => inv.status === 'declined').length}
+                        {invitations.filter((inv: any) => inv.status === 'declined').length}
                       </div>
                       <div className="text-sm text-red-600">Declined</div>
                     </div>
@@ -376,7 +394,7 @@ const InvitationsPage = () => {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredInvitations.map((invitation) => {
+                        {filteredInvitations.map((invitation: any) => {
                           return (
                             <TableRow key={invitation.id}>
                               <TableCell className="font-medium">
@@ -414,9 +432,14 @@ const InvitationsPage = () => {
                                       variant="outline"
                                       size="sm"
                                       onClick={() => handleResendInvitation(invitation.id)}
+                                      disabled={resendingInvitationId === invitation.id}
                                       className="hover:bg-airbnb-primary/10"
                                     >
-                                      <RotateCcw className="h-3 w-3 mr-1" />
+                                      {resendingInvitationId === invitation.id ? (
+                                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                      ) : (
+                                        <RotateCcw className="h-3 w-3 mr-1" />
+                                      )}
                                       Resend
                                     </Button>
                                   )}
@@ -425,7 +448,10 @@ const InvitationsPage = () => {
                                       variant="ghost"
                                       size="sm"
                                       onClick={() => {
-                                        alert(`Personal message: "${invitation.personal_message}"`);
+                                        toast.info(invitation.personal_message, {
+                                          description: "Personal message from invitation",
+                                          duration: 5000
+                                        });
                                       }}
                                       className="text-blue-600 hover:text-blue-700"
                                     >
@@ -440,7 +466,7 @@ const InvitationsPage = () => {
                       </TableBody>
                     </Table>
                   </div>
-                  {/* Pagination or Load More could go here if needed */}
+                  {/* Pagination info */}
                   {filteredInvitations.length > 0 && (
                     <div className="mt-4 text-center text-sm text-gray-500">
                       Showing {filteredInvitations.length} of {invitations.length} invitations

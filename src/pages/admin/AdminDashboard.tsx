@@ -506,7 +506,7 @@ const AdminDashboard = () => {
             </Card>
           </div>
           
-          <div className="mt-6 bg-muted p-4 rounded-lg flex items-center gap-3">
+          {/* <div className="mt-6 bg-muted p-4 rounded-lg flex items-center gap-3">
             <HelpCircle className="h-5 w-5 text-airbnb-light" />
             <p className="text-sm text-airbnb-light">
               Need help with the admin dashboard? 
@@ -514,7 +514,7 @@ const AdminDashboard = () => {
                 View the documentation
               </Link>
             </p>
-          </div>
+          </div> */}
         </div>
       </div>
     </Layout>

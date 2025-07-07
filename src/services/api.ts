@@ -1,5 +1,5 @@
 // API Configuration
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://api.oifyk.com/api'
+const API_BASE_URL ="https://api.oifyk.com/api"
 
 // Types based on your API documentation
 export interface User {
@@ -187,24 +187,7 @@ class APIClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<{ data: T | null; error: string | null }> {
-    console.log('Making API request to:', `${this.baseURL}`)
-    const normalizedEndpoint = endpoint.startsWith('/') ? endpoint.substring(1) : endpoint
-  const url = `${this.baseURL}/${normalizedEndpoint}`
-  
-  console.log('Making API request to:', url)
-  console.log('Full URL composition:', {
-    baseURL: this.baseURL,
-    endpoint,
-    normalizedEndpoint,
-    finalURL: url
-  })
-    // DEBUG: Log the full URL being called
-    console.log('🔍 API Call Details:', {
-      endpoint,
-      fullUrl: url,
-      baseURL: this.baseURL,
-      method: options.method || 'GET'
-    })
+    const url = `${this.baseURL}${endpoint}`
     
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -221,29 +204,14 @@ class APIClient {
         headers
       })
 
-      // DEBUG: Log response details
-      console.log('📡 Response Details:', {
-        status: response.status,
-        url: response.url, // This shows the final URL after any redirects
-        redirected: response.redirected,
-        headers: Object.fromEntries(response.headers.entries())
-      })
-
       // Handle token refresh on 401
       if (response.status === 401 && this.refreshToken) {
-        console.log('🔄 Attempting token refresh...')
         const refreshed = await this.refreshAccessToken()
         if (refreshed) {
           headers['Authorization'] = `Bearer ${this.accessToken}`
           response = await fetch(url, {
             ...options,
             headers
-          })
-          
-          console.log('📡 Retry Response Details:', {
-            status: response.status,
-            url: response.url,
-            redirected: response.redirected
           })
         }
       }
@@ -256,7 +224,7 @@ class APIClient {
       const data = await response.json()
       return { data, error: null }
     } catch (error) {
-      console.error(`❌ API Error [${endpoint}]:`, error)
+      console.error(`API Error [${endpoint}]:`, error)
       return { data: null, error: error instanceof Error ? error.message : 'Unknown error' }
     }
   }
@@ -633,7 +601,3 @@ export const analyticsService = {
 
 // Export the API client for direct use
 export { apiClient }
-
-
-
-

@@ -5,7 +5,7 @@ import Sidebar from "@/components/layout/Sidebar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Eye, MapPin, Download, Filter, Star, MoreHorizontal, ChevronDown } from "lucide-react";
+import { Search, Eye, MapPin, Download, Filter, Star, MoreHorizontal, ChevronDown, Loader2 } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -22,20 +22,108 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
+import { propertyService, type Property } from "@/services/api";
+import { toast } from "sonner";
 
 type SortDirection = "asc" | "desc";
-type SortField = "title" | "location" | "price" | "rating" | "status";
+type SortField = "title" | "city" | "price_per_night" | "status" | "created_at";
+
+interface PropertyFilters {
+  search?: string;
+  status?: string;
+  city?: string;
+  min_price?: number;
+  max_price?: number;
+  page?: number;
+  page_size?: number;
+}
 
 const AllProperties = () => {
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [totalCount, setTotalCount] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize] = useState(50);
+  
+  // Filter and sort states
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
-  const [sortField, setSortField] = useState<SortField>("title");
-  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [sortField, setSortField] = useState<SortField>("created_at");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   
+  const { user } = useAuth();
+
+  // Fetch properties with current filters
+  const fetchProperties = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const filters: PropertyFilters = {
+        page: currentPage,
+        page_size: pageSize,
+      };
+      
+      // Add search filter
+      if (searchQuery.trim()) {
+        filters.search = searchQuery.trim();
+      }
+      
+      // Add status filter
+      if (statusFilter) {
+        filters.status = statusFilter;
+      }
+      
+      // Note: The API doesn't support sorting yet, but we'll prepare for it
+      // In a real implementation, you'd add sorting to the API filters
+      
+      const response = await propertyService.getProperties(filters);
+      
+      if (response.error) {
+        throw new Error(response.error);
+      }
+      
+      if (response.data) {
+        setProperties(response.data.results);
+        setTotalCount(response.data.count);
+      }
+    } catch (error) {
+      console.error('Failed to fetch properties:', error);
+      setError(error instanceof Error ? error.message : 'Failed to fetch properties');
+      toast.error('Failed to load properties');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Effect to fetch properties when filters change
+  useEffect(() => {
+    fetchProperties();
+  }, [currentPage, pageSize, searchQuery, statusFilter]);
+
+  // Debounced search handler
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (currentPage !== 1) {
+        setCurrentPage(1); // Reset to first page when searching
+      } else {
+        fetchProperties();
+      }
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery]);
+
   const handleSearch = (query: string) => {
     setSearchQuery(query);
   };
   
+  const handleStatusFilter = (status: string | null) => {
+    setStatusFilter(status);
+    setCurrentPage(1); // Reset to first page when filtering
+  };
+
   const handleSort = (field: SortField) => {
     if (sortField === field) {
       setSortDirection(sortDirection === "asc" ? "desc" : "asc");
@@ -43,35 +131,109 @@ const AllProperties = () => {
       setSortField(field);
       setSortDirection("asc");
     }
+    
+    // For now, we'll sort client-side since API doesn't support it
+    const sortedProperties = [...properties].sort((a, b) => {
+      let aValue: any;
+      let bValue: any;
+      
+      switch (field) {
+        case "title":
+          aValue = a.title.toLowerCase();
+          bValue = b.title.toLowerCase();
+          break;
+        case "city":
+          aValue = a.city.toLowerCase();
+          bValue = b.city.toLowerCase();
+          break;
+        case "price_per_night":
+          aValue = a.price_per_night || 0;
+          bValue = b.price_per_night || 0;
+          break;
+        case "status":
+          aValue = a.status;
+          bValue = b.status;
+          break;
+        case "created_at":
+          aValue = new Date(a.created_at);
+          bValue = new Date(b.created_at);
+          break;
+        default:
+          return 0;
+      }
+      
+      if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
+      if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
+      return 0;
+    });
+    
+    setProperties(sortedProperties);
   };
 
-  const [properties, setProperties] = useState([]);
-  const { user } = useAuth();
+  const getStatusBadgeColor = (status: string) => {
+    switch (status) {
+      case "active":
+        return "bg-green-100 text-green-800";
+      case "draft":
+        return "bg-gray-100 text-gray-800";
+      case "inactive":
+        return "bg-red-100 text-red-800";
+      default:
+        return "bg-yellow-100 text-yellow-800";
+    }
+  };
 
-  useEffect(() => {
-    const fetchProperties = async () => {
-      const token = localStorage.getItem('access_token');
-      if (!token) return;
-      let url = `/api/properties/?page=1&page_size=100`;
-      if (searchQuery) url += `&search=${encodeURIComponent(searchQuery)}`;
-      if (statusFilter) url += `&status=${statusFilter}`;
-      if (sortField) url += `&ordering=${sortDirection === 'asc' ? '' : '-'}${sortField}`;
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setProperties(data.results || []);
-      } else {
-        setProperties([]);
-      }
-    };
-    fetchProperties();
-  }, [searchQuery, statusFilter, sortField, sortDirection]);
-  
+  const handleExport = async () => {
+    try {
+      // In a real implementation, you'd call an export endpoint
+      toast.info('Export functionality coming soon');
+    } catch (error) {
+      toast.error('Failed to export properties');
+    }
+  };
+
+  const handleDownloadImages = async (propertyId: string) => {
+    try {
+      // In a real implementation, you'd call an endpoint to download property images
+      toast.info('Image download functionality coming soon');
+    } catch (error) {
+      toast.error('Failed to download images');
+    }
+  };
+
+  if (loading && properties.length === 0) {
+    return (
+      <Layout hideFooter>
+        <div className="flex">
+          <Sidebar type="admin" />
+          <div className="flex-1 flex items-center justify-center">
+            <div className="flex items-center gap-2">
+              <Loader2 className="h-6 w-6 animate-spin" />
+              <span>Loading properties...</span>
+            </div>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (error && properties.length === 0) {
+    return (
+      <Layout hideFooter>
+        <div className="flex">
+          <Sidebar type="admin" />
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center">
+              <h2 className="text-lg font-semibold text-red-600 mb-2">Error Loading Properties</h2>
+              <p className="text-gray-600 mb-4">{error}</p>
+              <Button onClick={fetchProperties}>Retry</Button>
+            </div>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
   return (
     <Layout hideFooter>
       <div className="flex">
@@ -91,7 +253,7 @@ const AllProperties = () => {
                 <Filter className="h-4 w-4" />
                 Filters
               </Button>
-              <Button variant="outline" className="flex items-center gap-2">
+              <Button variant="outline" className="flex items-center gap-2" onClick={handleExport}>
                 <Download className="h-4 w-4" />
                 Export
               </Button>
@@ -102,9 +264,12 @@ const AllProperties = () => {
             <CardHeader>
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                 <div>
-                  <CardTitle>Property Listings</CardTitle>
+                  <CardTitle className="flex items-center gap-2">
+                    Property Listings
+                    {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+                  </CardTitle>
                   <CardDescription>
-                    {properties.length} total properties
+                    {totalCount} total properties
                   </CardDescription>
                 </div>
                 <div className="flex flex-col md:flex-row gap-4">
@@ -126,16 +291,16 @@ const AllProperties = () => {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent>
-                      <DropdownMenuItem onClick={() => setStatusFilter(null)}>
+                      <DropdownMenuItem onClick={() => handleStatusFilter(null)}>
                         All
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setStatusFilter("active")}>
+                      <DropdownMenuItem onClick={() => handleStatusFilter("active")}>
                         Active
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setStatusFilter("pending")}>
-                        Pending
+                      <DropdownMenuItem onClick={() => handleStatusFilter("draft")}>
+                        Draft
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setStatusFilter("inactive")}>
+                      <DropdownMenuItem onClick={() => handleStatusFilter("inactive")}>
                         Inactive
                       </DropdownMenuItem>
                     </DropdownMenuContent>
@@ -152,15 +317,13 @@ const AllProperties = () => {
                         Property {sortField === "title" && (sortDirection === "asc" ? "↑" : "↓")}
                       </TableHead>
                       <TableHead>Owner</TableHead>
-                      <TableHead className="cursor-pointer" onClick={() => handleSort("location")}>
-                        Location {sortField === "location" && (sortDirection === "asc" ? "↑" : "↓")}
+                      <TableHead className="cursor-pointer" onClick={() => handleSort("city")}>
+                        Location {sortField === "city" && (sortDirection === "asc" ? "↑" : "↓")}
                       </TableHead>
-                      <TableHead className="cursor-pointer" onClick={() => handleSort("price")}>
-                        Price {sortField === "price" && (sortDirection === "asc" ? "↑" : "↓")}
+                      <TableHead className="cursor-pointer" onClick={() => handleSort("price_per_night")}>
+                        Price {sortField === "price_per_night" && (sortDirection === "asc" ? "↑" : "↓")}
                       </TableHead>
-                      <TableHead className="cursor-pointer" onClick={() => handleSort("rating")}>
-                        Rating {sortField === "rating" && (sortDirection === "asc" ? "↑" : "↓")}
-                      </TableHead>
+                      <TableHead>Details</TableHead>
                       <TableHead className="cursor-pointer" onClick={() => handleSort("status")}>
                         Status {sortField === "status" && (sortDirection === "asc" ? "↑" : "↓")}
                       </TableHead>
@@ -172,34 +335,39 @@ const AllProperties = () => {
                       <TableRow key={property.id}>
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-3">
-                            <img 
-                              src={property.images[0]} 
-                              alt={property.title} 
-                              className="w-10 h-10 rounded-md object-cover" 
-                            />
-                            <span>{property.title}</span>
+                            {property.images && property.images.length > 0 ? (
+                              <img 
+                                src={property.images[0].image_url} 
+                                alt={property.title} 
+                                className="w-10 h-10 rounded-md object-cover" 
+                              />
+                            ) : (
+                              <div className="w-10 h-10 rounded-md bg-gray-200 flex items-center justify-center">
+                                <MapPin className="h-4 w-4 text-gray-400" />
+                              </div>
+                            )}
+                            <div>
+                              <div className="font-medium">{property.title}</div>
+                              <div className="text-sm text-gray-500">{property.bedrooms} bed, {property.bathrooms} bath</div>
+                            </div>
                           </div>
                         </TableCell>
-                        <TableCell>{property.owner}</TableCell>
+                        <TableCell>{property.owner_name}</TableCell>
                         <TableCell className="flex items-center gap-1">
                           <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
-                          {property.location}
-                        </TableCell>
-                        <TableCell>${property.price}/night</TableCell>
-                        <TableCell className="flex items-center gap-1">
-                          <Star className="h-3.5 w-3.5 text-yellow-400" />
-                          {property.rating || "N/A"}
+                          <span>{property.city}, {property.state}</span>
                         </TableCell>
                         <TableCell>
-                          <Badge
-                            className={
-                              property.status === "active"
-                                ? "bg-green-100 text-green-800"
-                                : property.status === "pending"
-                                ? "bg-yellow-100 text-yellow-800"
-                                : "bg-red-100 text-red-800"
-                            }
-                          >
+                          {property.price_per_night ? `$${property.price_per_night}/night` : 'N/A'}
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm">
+                            <div>{property.max_guests} guests max</div>
+                            <div className="text-gray-500">{property.booking_count} bookings</div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={getStatusBadgeColor(property.status)}>
                             {property.status.charAt(0).toUpperCase() + property.status.slice(1)}
                           </Badge>
                         </TableCell>
@@ -220,7 +388,7 @@ const AllProperties = () => {
                                   View Details
                                 </Link>
                               </DropdownMenuItem>
-                              <DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleDownloadImages(property.id)}>
                                 <div className="flex items-center gap-2">
                                   <Download className="h-4 w-4" />
                                   Download Images
@@ -233,7 +401,40 @@ const AllProperties = () => {
                     ))}
                   </TableBody>
                 </Table>
+                
+                {properties.length === 0 && !loading && (
+                  <div className="text-center py-8">
+                    <p className="text-gray-500">No properties found matching your criteria.</p>
+                  </div>
+                )}
               </div>
+              
+              {/* Pagination */}
+              {totalCount > pageSize && (
+                <div className="flex items-center justify-between px-2 py-4">
+                  <div className="text-sm text-gray-500">
+                    Showing {Math.min((currentPage - 1) * pageSize + 1, totalCount)} to {Math.min(currentPage * pageSize, totalCount)} of {totalCount} properties
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(prev => prev + 1)}
+                      disabled={currentPage * pageSize >= totalCount}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
