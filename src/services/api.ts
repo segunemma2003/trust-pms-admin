@@ -117,28 +117,27 @@ export interface Activity {
 
 // API Client Class
 class APIClient {
-  private baseURL: string
-  private accessToken: string | null = null
-  private refreshToken: string | null = null
+  public baseURL: string
 
   constructor(baseURL: string) {
     this.baseURL = baseURL
-    this.loadTokens()
   }
 
-  private loadTokens() {
+  // Always get the latest tokens from localStorage
+  private getCurrentTokens() {
     if (typeof window !== 'undefined') {
-      this.accessToken = localStorage.getItem('access_token')
-      this.refreshToken = localStorage.getItem('refresh_token')
+      return {
+        accessToken: localStorage.getItem('access_token'),
+        refreshToken: localStorage.getItem('refresh_token')
+      }
     }
+    return { accessToken: null, refreshToken: null }
   }
 
   private saveTokens(access: string, refresh: string) {
     if (typeof window !== 'undefined') {
       localStorage.setItem('access_token', access)
       localStorage.setItem('refresh_token', refresh)
-      this.accessToken = access
-      this.refreshToken = refresh
     }
   }
 
@@ -146,13 +145,12 @@ class APIClient {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('access_token')
       localStorage.removeItem('refresh_token')
-      this.accessToken = null
-      this.refreshToken = null
     }
   }
 
   private async refreshAccessToken(): Promise<boolean> {
-    if (!this.refreshToken) return false
+    const { refreshToken } = this.getCurrentTokens()
+    if (!refreshToken) return false
 
     try {
       const response = await fetch(`${this.baseURL}/auth/jwt/refresh/`, {
@@ -161,13 +159,12 @@ class APIClient {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          refresh: this.refreshToken
+          refresh: refreshToken
         })
       })
 
       if (response.ok) {
         const data = await response.json()
-        this.accessToken = data.access
         if (typeof window !== 'undefined') {
           localStorage.setItem('access_token', data.access)
         }
@@ -189,13 +186,16 @@ class APIClient {
   ): Promise<{ data: T | null; error: string | null }> {
     const url = `${this.baseURL}${endpoint}`
     
+    // Always get the current tokens from localStorage
+    const { accessToken, refreshToken } = this.getCurrentTokens()
+    
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...options.headers as Record<string, string>
     }
 
-    if (this.accessToken) {
-      headers['Authorization'] = `Bearer ${this.accessToken}`
+    if (accessToken) {
+      headers['Authorization'] = `Bearer ${accessToken}`
     }
 
     try {
@@ -205,10 +205,12 @@ class APIClient {
       })
 
       // Handle token refresh on 401
-      if (response.status === 401 && this.refreshToken) {
+      if (response.status === 401 && refreshToken) {
         const refreshed = await this.refreshAccessToken()
         if (refreshed) {
-          headers['Authorization'] = `Bearer ${this.accessToken}`
+          // Get the new token and retry the request
+          const { accessToken: newAccessToken } = this.getCurrentTokens()
+          headers['Authorization'] = `Bearer ${newAccessToken}`
           response = await fetch(url, {
             ...options,
             headers
