@@ -18,112 +18,197 @@ import {
   Key,
   Users,
   Lock,
-  Globe
+  Globe,
+  Loader2,
+  RefreshCw
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { userService, apiClient, type User } from "@/services/api";
+
+interface ProfileFormData {
+  full_name: string;
+  phone: string;
+  email: string;
+}
+
+interface PasswordFormData {
+  old_password: string;
+  new_password: string;
+}
 
 const Settings = () => {
-  const [saving, setSaving] = useState(false);
-  const [profileTab, setProfileTab] = useState({
+  const [profileTab, setProfileTab] = useState<ProfileFormData>({
     full_name: '',
     phone: '',
     email: '',
   });
-  const [passwordTab, setPasswordTab] = useState({
+  const [passwordTab, setPasswordTab] = useState<PasswordFormData>({
     old_password: '',
     new_password: '',
   });
-  const [profileLoading, setProfileLoading] = useState(false);
-  const { user, refreshProfile } = useAuth();
   
+  const { user, refreshProfile } = useAuth();
+  const queryClient = useQueryClient();
+
+  // Query for getting current user profile
+  const { 
+    data: currentUserResponse, 
+    isLoading: profileLoading, 
+    isError: profileError,
+    error: profileErrorMessage,
+    refetch: refetchProfile
+  } = useQuery({
+    queryKey: ['user', 'profile'],
+    queryFn: async () => {
+      const result = await userService.getCurrentUser();
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      return result.data;
+    },
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    retry: 2,
+  });
+
+  // Update profile form when user data loads
   useEffect(() => {
-    const fetchProfile = async () => {
-      setProfileLoading(true);
-      const token = localStorage.getItem('access_token');
-      if (!token) return;
-      const response = await fetch(`/api/users/profile/`, {
+    if (currentUserResponse) {
+      setProfileTab({
+        full_name: currentUserResponse.full_name || '',
+        phone: currentUserResponse.phone || '',
+        email: currentUserResponse.email || '',
+      });
+    }
+  }, [currentUserResponse]);
+
+  // Mutation for updating profile
+  const updateProfileMutation = useMutation({
+    mutationFn: async (updates: { full_name?: string; phone?: string }) => {
+      const result = await userService.updateUser(user?.id || '', updates);
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      return result.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['user', 'profile'] });
+      toast.success('Profile updated successfully!');
+      refreshProfile?.();
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to update profile: ${error.message}`);
+    },
+  });
+
+  // Mutation for changing password
+  const changePasswordMutation = useMutation({
+    mutationFn: async (passwordData: PasswordFormData) => {
+      // Using apiClient directly since there's no specific service method
+      const response = await fetch(`${apiClient['baseURL']}/users/change_password/`, {
+        method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({
+          old_password: passwordData.old_password,
+          new_password: passwordData.new_password,
+        }),
       });
-      if (response.ok) {
-        const data = await response.json();
-        setProfileTab({
-          full_name: data.full_name || '',
-          phone: data.phone || '',
-          email: data.email || '',
-        });
-      }
-      setProfileLoading(false);
-    };
-    fetchProfile();
-  }, []);
 
-  const handleProfileChange = (e) => {
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
+
+      return await response.json();
+    },
+    onSuccess: () => {
+      toast.success('Password changed successfully!');
+      setPasswordTab({ old_password: '', new_password: '' });
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to change password: ${error.message}`);
+    },
+  });
+
+  const handleProfileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setProfileTab({ ...profileTab, [e.target.name]: e.target.value });
   };
 
   const handleProfileSave = async () => {
-    setSaving(true);
-    const token = localStorage.getItem('access_token');
-    if (!token) return;
-    const response = await fetch(`/api/users/update_profile/`, {
-      method: 'PATCH',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        full_name: profileTab.full_name,
-        phone: profileTab.phone,
-      }),
-    });
-    if (response.ok) {
-      toast.success('Profile updated successfully!');
-      refreshProfile();
-    } else {
-      toast.error('Failed to update profile.');
+    if (!profileTab.full_name.trim()) {
+      toast.error('Full name is required');
+      return;
     }
-    setSaving(false);
+
+    updateProfileMutation.mutate({
+      full_name: profileTab.full_name,
+      phone: profileTab.phone,
+    });
   };
 
-  const handlePasswordChange = (e) => {
+  const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setPasswordTab({ ...passwordTab, [e.target.name]: e.target.value });
   };
 
   const handlePasswordSave = async () => {
-    setSaving(true);
-    const token = localStorage.getItem('access_token');
-    if (!token) return;
-    const response = await fetch(`/api/users/change_password/`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        old_password: passwordTab.old_password,
-        new_password: passwordTab.new_password,
-      }),
-    });
-    if (response.ok) {
-      toast.success('Password changed successfully!');
-      setPasswordTab({ old_password: '', new_password: '' });
-    } else {
-      toast.error('Failed to change password.');
+    if (!passwordTab.old_password.trim()) {
+      toast.error('Current password is required');
+      return;
     }
-    setSaving(false);
+    
+    if (!passwordTab.new_password.trim()) {
+      toast.error('New password is required');
+      return;
+    }
+
+    if (passwordTab.new_password.length < 6) {
+      toast.error('New password must be at least 6 characters long');
+      return;
+    }
+
+    changePasswordMutation.mutate(passwordTab);
   };
 
   const handleSaveSettings = () => {
-    setSaving(true);
-    // Simulate API call
-    setTimeout(() => {
-      setSaving(false);
-      toast.success("Settings saved successfully!");
-    }, 1000);
+    // This would be for other settings tabs that don't have specific save buttons
+    toast.success("Settings saved successfully!");
   };
+
+  const handleRefreshProfile = () => {
+    refetchProfile();
+  };
+
+  if (profileError) {
+    return (
+      <Layout hideFooter>
+        <div className="flex">
+          <Sidebar type="admin" />
+          <div className="flex-1 p-6 overflow-y-auto">
+            <div className="text-center py-8 text-red-600">
+              <p className="mb-2">Error loading profile:</p>
+              <p className="text-sm mb-4">
+                {profileErrorMessage?.message?.includes('DOCTYPE') 
+                  ? 'API returned HTML instead of JSON. Please check if the user profile endpoint is working correctly.'
+                  : profileErrorMessage?.message || 'Unknown error occurred'
+                }
+              </p>
+              <Button 
+                variant="outline" 
+                onClick={handleRefreshProfile}
+                className="flex items-center gap-2"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Retry
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout hideFooter>
@@ -139,23 +224,22 @@ const Settings = () => {
               </p>
             </div>
             
-            <div className="mt-4 md:mt-0">
+            <div className="mt-4 md:mt-0 flex gap-2">
+              <Button
+                variant="outline"
+                onClick={handleRefreshProfile}
+                disabled={profileLoading}
+                className="flex items-center gap-2"
+              >
+                <RefreshCw className={`h-4 w-4 ${profileLoading ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
               <Button
                 className="bg-airbnb-primary hover:bg-airbnb-primary/90 flex items-center gap-2"
                 onClick={handleSaveSettings}
-                disabled={saving}
               >
-                {saving ? (
-                  <>
-                    <span className="animate-spin">...</span>
-                    Saving
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-4 w-4" />
-                    Save Changes
-                  </>
-                )}
+                <Save className="h-4 w-4" />
+                Save Changes
               </Button>
             </div>
           </div>
@@ -177,27 +261,80 @@ const Settings = () => {
                   <CardDescription>View and update your profile information</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="full_name">Full Name</Label>
-                      <Input id="full_name" name="full_name" value={profileTab.full_name} onChange={handleProfileChange} disabled={profileLoading} />
+                  {profileLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin" />
+                      <span className="ml-2">Loading profile...</span>
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="email">Email</Label>
-                      <Input id="email" name="email" value={profileTab.email} disabled readOnly />
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="full_name">Full Name</Label>
+                        <Input 
+                          id="full_name" 
+                          name="full_name" 
+                          value={profileTab.full_name} 
+                          onChange={handleProfileChange} 
+                          disabled={updateProfileMutation.isPending}
+                          placeholder="Enter your full name"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="email">Email</Label>
+                        <Input 
+                          id="email" 
+                          name="email" 
+                          value={profileTab.email} 
+                          disabled 
+                          readOnly 
+                          className="bg-gray-50"
+                        />
+                        <p className="text-xs text-muted-foreground">Email cannot be changed</p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="phone">Phone</Label>
+                        <Input 
+                          id="phone" 
+                          name="phone" 
+                          value={profileTab.phone} 
+                          onChange={handleProfileChange} 
+                          disabled={updateProfileMutation.isPending}
+                          placeholder="Enter your phone number"
+                        />
+                      </div>
+                      
+                      {currentUserResponse && (
+                        <div className="space-y-2">
+                          <Label>User Type</Label>
+                          <Input 
+                            value={currentUserResponse.user_type?.charAt(0).toUpperCase() + currentUserResponse.user_type?.slice(1) || 'Unknown'} 
+                            disabled 
+                            readOnly 
+                            className="bg-gray-50"
+                          />
+                        </div>
+                      )}
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="phone">Phone</Label>
-                      <Input id="phone" name="phone" value={profileTab.phone} onChange={handleProfileChange} disabled={profileLoading} />
-                    </div>
-                  </div>
+                  )}
                 </CardContent>
                 <CardFooter>
-                  <Button onClick={handleProfileSave} disabled={saving || profileLoading} className="bg-airbnb-primary hover:bg-airbnb-primary/90">
-                    {saving ? 'Saving...' : 'Save Profile'}
+                  <Button 
+                    onClick={handleProfileSave} 
+                    disabled={updateProfileMutation.isPending || profileLoading} 
+                    className="bg-airbnb-primary hover:bg-airbnb-primary/90"
+                  >
+                    {updateProfileMutation.isPending ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      'Save Profile'
+                    )}
                   </Button>
                 </CardFooter>
               </Card>
+              
               <Card>
                 <CardHeader>
                   <CardTitle>Change Password</CardTitle>
@@ -207,17 +344,45 @@ const Settings = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="old_password">Current Password</Label>
-                      <Input id="old_password" name="old_password" type="password" value={passwordTab.old_password} onChange={handlePasswordChange} />
+                      <Input 
+                        id="old_password" 
+                        name="old_password" 
+                        type="password" 
+                        value={passwordTab.old_password} 
+                        onChange={handlePasswordChange}
+                        disabled={changePasswordMutation.isPending}
+                        placeholder="Enter current password"
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="new_password">New Password</Label>
-                      <Input id="new_password" name="new_password" type="password" value={passwordTab.new_password} onChange={handlePasswordChange} />
+                      <Input 
+                        id="new_password" 
+                        name="new_password" 
+                        type="password" 
+                        value={passwordTab.new_password} 
+                        onChange={handlePasswordChange}
+                        disabled={changePasswordMutation.isPending}
+                        placeholder="Enter new password"
+                      />
+                      <p className="text-xs text-muted-foreground">Password must be at least 6 characters long</p>
                     </div>
                   </div>
                 </CardContent>
                 <CardFooter>
-                  <Button onClick={handlePasswordSave} disabled={saving} className="bg-airbnb-primary hover:bg-airbnb-primary/90">
-                    {saving ? 'Saving...' : 'Change Password'}
+                  <Button 
+                    onClick={handlePasswordSave} 
+                    disabled={changePasswordMutation.isPending} 
+                    className="bg-airbnb-primary hover:bg-airbnb-primary/90"
+                  >
+                    {changePasswordMutation.isPending ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Changing...
+                      </>
+                    ) : (
+                      'Change Password'
+                    )}
                   </Button>
                 </CardFooter>
               </Card>

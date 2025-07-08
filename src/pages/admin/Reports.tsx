@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Layout from "@/components/layout/Layout";
 import Sidebar from "@/components/layout/Sidebar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Download, Calendar, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { Download, Calendar, ArrowUpRight, ArrowDownRight, Loader2, RefreshCw } from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -21,7 +21,8 @@ import {
   Legend,
 } from "recharts";
 import { useAuth } from "@/contexts/AuthContext";
-import { analyticsService, propertyService } from "@/services/api";
+import { useQuery } from "@tanstack/react-query";
+import { analyticsService, propertyService, type Property } from "@/services/api";
 
 const COLORS = ["#FF5A5F", "#00A699", "#FC642D", "#484848", "#767676"];
 
@@ -41,81 +42,127 @@ interface PropertyData {
 }
 
 const Reports = () => {
-  const [revenueData, setRevenueData] = useState<RevenueData[]>([]);
-  const [bookingData, setBookingData] = useState<BookingData[]>([]);
-  const [propertiesData, setPropertiesData] = useState<PropertyData[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
-
-  useEffect(() => {
-    const fetchAnalytics = async () => {
-      setLoading(true);
-      setError(null);
+  
+  // Query for revenue analytics
+  const { 
+    data: revenueResponse, 
+    isLoading: revenueLoading, 
+    isError: revenueError,
+    error: revenueErrorMessage,
+    refetch: refetchRevenue
+  } = useQuery({
+    queryKey: ['analytics', 'revenue'],
+    queryFn: async () => {
+      const result = await analyticsService.getRevenueAnalytics({
+        start_date: '2025-01-01',
+        end_date: '2025-12-31',
+        group_by: 'month'
+      });
       
-      try {
-        // Fetch revenue analytics using the service
-        const revenueResponse = await analyticsService.getRevenueAnalytics({
-          start_date: '2025-01-01',
-          end_date: '2025-12-31',
-          group_by: 'month'
-        });
-
-        if (revenueResponse.error) {
-          throw new Error(revenueResponse.error);
-        }
-
-        if (revenueResponse.data?.data) {
-          const revenueChartData = revenueResponse.data.data.map((item: any) => ({
-            month: item.period,
-            revenue: item.revenue
-          }));
-          
-          const bookingChartData = revenueResponse.data.data.map((item: any) => ({
-            month: item.period,
-            bookings: item.bookings_count
-          }));
-          
-          setRevenueData(revenueChartData);
-          setBookingData(bookingChartData);
-        }
-
-        // Fetch properties for property type analysis using the service
-        const propertiesResponse = await propertyService.getProperties({
-          page: 1,
-          page_size: 1000
-        });
-
-        if (propertiesResponse.error) {
-          throw new Error(propertiesResponse.error);
-        }
-
-        if (propertiesResponse.data?.results) {
-          const typeCounts: Record<string, number> = {};
-          propertiesResponse.data.results.forEach((prop) => {
-            const type = prop.property_type || 'Other';
-            typeCounts[type] = (typeCounts[type] || 0) + 1;
-          });
-
-          const propertyChartData = Object.entries(typeCounts).map(([category, count]) => ({
-            category,
-            count
-          }));
-          
-          setPropertiesData(propertyChartData);
-        }
-      } catch (err) {
-        console.error('Error fetching analytics:', err);
-        setError(err instanceof Error ? err.message : 'An error occurred while fetching analytics');
-      } finally {
-        setLoading(false);
+      if (result.error) {
+        throw new Error(result.error);
       }
-    };
+      
+      return result.data;
+    },
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    retry: 2,
+  });
 
-    fetchAnalytics();
-  }, []);
+  // Query for properties data
+  const { 
+    data: propertiesResponse, 
+    isLoading: propertiesLoading, 
+    isError: propertiesError,
+    error: propertiesErrorMessage,
+    refetch: refetchProperties
+  } = useQuery({
+    queryKey: ['properties', 'analytics'],
+    queryFn: async () => {
+      const result = await propertyService.getProperties({
+        page: 1,
+        page_size: 1000
+      });
+      
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      
+      return result.data;
+    },
+    staleTime: 10 * 60 * 1000, // Cache for 10 minutes
+    retry: 2,
+  });
 
-  if (loading) {
+  // Process revenue data
+  const revenueData: RevenueData[] = revenueResponse?.data?.map((item: any) => ({
+    month: item.period || item.month || 'Unknown',
+    revenue: item.revenue || 0
+  })) || [];
+
+  // Process booking data
+  const bookingData: BookingData[] = revenueResponse?.data?.map((item: any) => ({
+    month: item.period || item.month || 'Unknown',
+    bookings: item.bookings_count || item.bookings || 0
+  })) || [];
+
+  // Process properties data
+  const propertiesData: PropertyData[] = (() => {
+    if (!propertiesResponse) return [];
+    
+    const properties = Array.isArray(propertiesResponse) 
+      ? propertiesResponse 
+      : propertiesResponse.results || [];
+    
+    // Since Property type doesn't have property_type, we'll categorize by other criteria
+    const categoryCounts: Record<string, number> = {};
+    
+    properties.forEach((prop: Property) => {
+      // Create categories based on available data
+      let category = 'Other';
+      
+      // Categorize by bedrooms count
+      if (prop.bedrooms >= 4) {
+        category = 'Large (4+ beds)';
+      } else if (prop.bedrooms >= 2) {
+        category = 'Medium (2-3 beds)';
+      } else if (prop.bedrooms === 1) {
+        category = 'Small (1 bed)';
+      } else {
+        category = 'Studio';
+      }
+      
+      // Alternative: categorize by price range
+      // if (prop.display_price >= 200) {
+      //   category = 'Luxury ($200+)';
+      // } else if (prop.display_price >= 100) {
+      //   category = 'Premium ($100-199)';
+      // } else if (prop.display_price >= 50) {
+      //   category = 'Standard ($50-99)';
+      // } else {
+      //   category = 'Budget (<$50)';
+      // }
+      
+      categoryCounts[category] = (categoryCounts[category] || 0) + 1;
+    });
+
+    return Object.entries(categoryCounts).map(([category, count]) => ({
+      category,
+      count
+    }));
+  })();
+
+  const isLoading = revenueLoading || propertiesLoading;
+  const hasError = revenueError || propertiesError;
+  const errorMessage = revenueErrorMessage?.message || propertiesErrorMessage?.message;
+
+  const handleRefresh = () => {
+    refetchRevenue();
+    refetchProperties();
+  };
+
+  if (isLoading) {
     return (
       <Layout hideFooter>
         <div className="flex">
@@ -123,7 +170,7 @@ const Reports = () => {
           <div className="flex-1 p-6 overflow-y-auto">
             <div className="flex items-center justify-center h-64">
               <div className="text-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-airbnb-red mx-auto mb-4"></div>
+                <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-airbnb-red" />
                 <p className="text-airbnb-light">Loading analytics...</p>
               </div>
             </div>
@@ -133,7 +180,7 @@ const Reports = () => {
     );
   }
 
-  if (error) {
+  if (hasError) {
     return (
       <Layout hideFooter>
         <div className="flex">
@@ -141,13 +188,19 @@ const Reports = () => {
           <div className="flex-1 p-6 overflow-y-auto">
             <div className="flex items-center justify-center h-64">
               <div className="text-center">
-                <p className="text-red-600 mb-4">Error loading analytics</p>
-                <p className="text-airbnb-light text-sm">{error}</p>
+                <p className="text-red-600 mb-2">Error loading analytics</p>
+                <p className="text-airbnb-light text-sm mb-4">
+                  {errorMessage?.includes('DOCTYPE') 
+                    ? 'API returned HTML instead of JSON. Please check if the analytics endpoints are working correctly.'
+                    : errorMessage || 'An unknown error occurred'
+                  }
+                </p>
                 <Button 
-                  onClick={() => window.location.reload()} 
-                  className="mt-4"
+                  onClick={handleRefresh} 
                   variant="outline"
+                  className="flex items-center gap-2"
                 >
+                  <RefreshCw className="h-4 w-4" />
                   Retry
                 </Button>
               </div>
@@ -159,9 +212,9 @@ const Reports = () => {
   }
 
   // Calculate summary metrics from the data
-  const totalRevenue = revenueData.reduce((sum, item) => sum + item.revenue, 0);
-  const totalBookings = bookingData.reduce((sum, item) => sum + item.bookings, 0);
-  const totalProperties = propertiesData.reduce((sum, item) => sum + item.count, 0);
+  const totalRevenue = revenueData.reduce((sum, item) => sum + (item.revenue || 0), 0);
+  const totalBookings = bookingData.reduce((sum, item) => sum + (item.bookings || 0), 0);
+  const totalProperties = propertiesData.reduce((sum, item) => sum + (item.count || 0), 0);
 
   return (
     <Layout hideFooter>
@@ -180,7 +233,20 @@ const Reports = () => {
             <div className="mt-4 md:mt-0 flex gap-2">
               <Button 
                 variant="outline" 
+                onClick={handleRefresh}
+                disabled={isLoading}
                 className="flex items-center gap-2"
+              >
+                <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+              <Button 
+                variant="outline" 
+                className="flex items-center gap-2"
+                onClick={() => {
+                  // Placeholder for date range picker
+                  alert('Date range picker - to be implemented');
+                }}
               >
                 <Calendar className="h-4 w-4" />
                 Custom Range
@@ -188,6 +254,10 @@ const Reports = () => {
               <Button 
                 variant="outline" 
                 className="flex items-center gap-2"
+                onClick={() => {
+                  // Placeholder for export functionality
+                  alert('Export functionality - to be implemented');
+                }}
               >
                 <Download className="h-4 w-4" />
                 Export
@@ -220,7 +290,7 @@ const Reports = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{totalBookings}</div>
+                <div className="text-2xl font-bold">{totalBookings.toLocaleString()}</div>
                 <div className="flex items-center text-sm text-green-600 mt-1">
                   <ArrowUpRight className="h-4 w-4 mr-1" />
                   <span>From {bookingData.length} months</span>
@@ -235,7 +305,7 @@ const Reports = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{totalProperties}</div>
+                <div className="text-2xl font-bold">{totalProperties.toLocaleString()}</div>
                 <div className="flex items-center text-sm text-airbnb-light mt-1">
                   <span>Across {propertiesData.length} categories</span>
                 </div>
@@ -257,18 +327,35 @@ const Reports = () => {
                   <CardDescription>Monthly revenue trends</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="h-80">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={revenueData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="month" />
-                        <YAxis />
-                        <Tooltip formatter={(value) => [`$${value}`, 'Revenue']} />
-                        <Legend />
-                        <Line type="monotone" dataKey="revenue" stroke="#FF5A5F" strokeWidth={2} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
+                  {revenueData.length > 0 ? (
+                    <div className="h-80">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={revenueData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="month" />
+                          <YAxis />
+                          <Tooltip 
+                            formatter={(value) => [`${Number(value).toLocaleString()}`, 'Revenue']} 
+                          />
+                          <Legend />
+                          <Line 
+                            type="monotone" 
+                            dataKey="revenue" 
+                            stroke="#FF5A5F" 
+                            strokeWidth={2}
+                            dot={{ fill: '#FF5A5F' }}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="h-80 flex items-center justify-center text-gray-500">
+                      <div className="text-center">
+                        <p className="text-lg mb-2">No revenue data available</p>
+                        <p className="text-sm">Revenue analytics will appear here when data is available</p>
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
@@ -280,18 +367,29 @@ const Reports = () => {
                   <CardDescription>Monthly booking trends</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="h-80">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={bookingData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="month" />
-                        <YAxis />
-                        <Tooltip />
-                        <Legend />
-                        <Bar dataKey="bookings" fill="#00A699" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
+                  {bookingData.length > 0 ? (
+                    <div className="h-80">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={bookingData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="month" />
+                          <YAxis />
+                          <Tooltip 
+                            formatter={(value) => [Number(value).toLocaleString(), 'Bookings']} 
+                          />
+                          <Legend />
+                          <Bar dataKey="bookings" fill="#00A699" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="h-80 flex items-center justify-center text-gray-500">
+                      <div className="text-center">
+                        <p className="text-lg mb-2">No booking data available</p>
+                        <p className="text-sm">Booking statistics will appear here when data is available</p>
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
@@ -300,52 +398,77 @@ const Reports = () => {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Property Types</CardTitle>
-                    <CardDescription>Distribution of property categories</CardDescription>
+                    <CardTitle>Property Categories</CardTitle>
+                    <CardDescription>Distribution by bedroom count</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="h-80">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart layout="vertical" data={propertiesData}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis type="number" />
-                          <YAxis dataKey="category" type="category" width={100} />
-                          <Tooltip />
-                          <Legend />
-                          <Bar dataKey="count" fill="#FF5A5F" />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
+                    {propertiesData.length > 0 ? (
+                      <div className="h-80">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart layout="vertical" data={propertiesData}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis type="number" />
+                            <YAxis dataKey="category" type="category" width={120} />
+                            <Tooltip 
+                              formatter={(value) => [Number(value).toLocaleString(), 'Properties']} 
+                            />
+                            <Legend />
+                            <Bar dataKey="count" fill="#FF5A5F" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    ) : (
+                      <div className="h-80 flex items-center justify-center text-gray-500">
+                        <div className="text-center">
+                          <p className="text-lg mb-2">No property data available</p>
+                          <p className="text-sm">Property categories will appear here when data is available</p>
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
                 
                 <Card>
                   <CardHeader>
                     <CardTitle>Property Distribution</CardTitle>
-                    <CardDescription>Property types breakdown</CardDescription>
+                    <CardDescription>Property breakdown by category</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="h-80">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={propertiesData}
-                            dataKey="count"
-                            nameKey="category"
-                            cx="50%"
-                            cy="50%"
-                            outerRadius={100}
-                            fill="#8884d8"
-                            label={({ category, count }) => `${category}: ${count}`}
-                          >
-                            {propertiesData.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                            ))}
-                          </Pie>
-                          <Tooltip />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </div>
+                    {propertiesData.length > 0 ? (
+                      <div className="h-80">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={propertiesData}
+                              dataKey="count"
+                              nameKey="category"
+                              cx="50%"
+                              cy="50%"
+                              outerRadius={100}
+                              fill="#8884d8"
+                              label={({ category, count }) => `${category}: ${count}`}
+                            >
+                              {propertiesData.map((entry, index) => (
+                                <Cell 
+                                  key={`cell-${index}`} 
+                                  fill={COLORS[index % COLORS.length]} 
+                                />
+                              ))}
+                            </Pie>
+                            <Tooltip 
+                              formatter={(value) => [Number(value).toLocaleString(), 'Properties']} 
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                    ) : (
+                      <div className="h-80 flex items-center justify-center text-gray-500">
+                        <div className="text-center">
+                          <p className="text-lg mb-2">No property data available</p>
+                          <p className="text-sm">Property distribution will appear here when data is available</p>
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </div>

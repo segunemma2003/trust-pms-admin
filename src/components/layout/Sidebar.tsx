@@ -83,7 +83,7 @@ const Sidebar = ({ type }: SidebarProps) => {
         ))}
       </nav>
       
-      <div className="mt-auto pt-4 border-t">
+      {/* <div className="mt-auto pt-4 border-t">
         <Link
           to="/help"
           className="flex items-center px-4 py-3 text-sm rounded-lg text-airbnb-light hover:bg-gray-100"
@@ -99,7 +99,7 @@ const Sidebar = ({ type }: SidebarProps) => {
           <Eye className="h-5 w-5 mr-3" />
           View Public Site
         </Link>
-      </div>
+      </div> */}
     </aside>
   );
 };
