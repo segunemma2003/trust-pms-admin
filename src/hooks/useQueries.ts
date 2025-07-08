@@ -71,6 +71,89 @@ export const useCreateInvitation = () => {
   })
 }
 
+// NEW: Resend Invitation Mutations
+export const useResendInvitation = () => {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async (invitationId: string) => {
+      const result = await invitationService.resendInvitation(invitationId);
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      return result.data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['invitations'] })
+      toast.success(`Invitation resent successfully! (Reminder #${data?.reminder_count})`)
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to resend invitation: ${error.message}`)
+    },
+  })
+}
+
+export const useResendInvitationByEmail = () => {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async ({ email, invitationType }: { 
+      email: string; 
+      invitationType: 'user' | 'owner' | 'admin' 
+    }) => {
+      const result = await invitationService.resendInvitationByEmail(email, invitationType);
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      return result.data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['invitations'] })
+      toast.success(`Invitation resent successfully! (Reminder #${data?.reminder_count})`)
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to resend invitation: ${error.message}`)
+    },
+  })
+}
+
+// NEW: Task Status Query
+export const useTaskStatus = (taskId: string | null) => {
+  return useQuery({
+    queryKey: ['task-status', taskId],
+    queryFn: async () => {
+      if (!taskId) return null;
+      const result = await invitationService.checkTaskStatus(taskId);
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      return result.data;
+    },
+    enabled: !!taskId,
+    refetchInterval: (data) => {
+      // Type assertion or proper type checking
+      if (data && typeof data === 'object' && 'ready' in data && data.ready) {
+        return false; // Stop polling if task is complete
+      }
+      return 2000; // Poll every 2 seconds while task is running
+    },
+  })
+}
+// NEW: Celery Status Query
+export const useCeleryStatus = () => {
+  return useQuery({
+    queryKey: ['celery-status'],
+    queryFn: async () => {
+      const result = await invitationService.checkCeleryStatus();
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      return result.data;
+    },
+    refetchInterval: 30000, // Check every 30 seconds
+  })
+}
+
 // Property Queries
 export const useProperties = (filters?: Parameters<typeof propertyService.getProperties>[0]) => {
   return useQuery({

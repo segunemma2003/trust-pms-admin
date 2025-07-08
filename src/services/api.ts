@@ -80,7 +80,19 @@ export interface Invitation {
   is_valid: boolean
   can_send_reminder: boolean
   days_until_expiry: number
+  reminder_count?: number
+  last_reminder_sent?: string
   created_at: string
+}
+
+// New type for resend response
+export interface ResendInvitationResponse {
+  message: string
+  invitation_id: string
+  task_id: string
+  reminder_count: number
+  can_send_more: boolean
+  next_reminder_available_at?: string
 }
 
 export interface DashboardMetrics {
@@ -394,6 +406,49 @@ class APIClient {
     })
   }
 
+  // NEW: Resend invitation by ID
+  async resendInvitation(invitationId: string) {
+    return this.makeRequest<ResendInvitationResponse>(`/invitations/${invitationId}/resend_invitation/`, {
+      method: 'POST'
+    })
+  }
+
+  // NEW: Resend invitation by email
+  async resendInvitationByEmail(email: string, invitationType: 'user' | 'owner' | 'admin' = 'user') {
+    return this.makeRequest<ResendInvitationResponse>('/invitations/resend_by_email/', {
+      method: 'POST',
+      body: JSON.stringify({
+        email,
+        invitation_type: invitationType
+      })
+    })
+  }
+
+  // NEW: Check task status
+  async checkTaskStatus(taskId: string) {
+    return this.makeRequest<{
+      task_id: string
+      state: string
+      ready: boolean
+      successful?: boolean
+      result?: any
+      error?: string
+      traceback?: string
+      workers_active: boolean
+      active_workers: string[]
+    }>(`/invitations/check_task_status/?task_id=${taskId}`)
+  }
+
+  // NEW: Check Celery status
+  async checkCeleryStatus() {
+    return this.makeRequest<{
+      status: string
+      workers: string[]
+      active_tasks: number
+      worker_count: number
+    }>('/invitations/celery_status/')
+  }
+
   async validateInvitationToken(token: string) {
     return this.makeRequest<{
       valid: boolean
@@ -510,6 +565,17 @@ export const invitationService = {
   },
   
   getInvitations: () => apiClient.getInvitations(),
+  
+  // NEW: Resend invitation methods
+  resendInvitation: (invitationId: string) => apiClient.resendInvitation(invitationId),
+  
+  resendInvitationByEmail: (email: string, invitationType: 'user' | 'owner' | 'admin' = 'user') => 
+    apiClient.resendInvitationByEmail(email, invitationType),
+  
+  // NEW: Task monitoring methods
+  checkTaskStatus: (taskId: string) => apiClient.checkTaskStatus(taskId),
+  checkCeleryStatus: () => apiClient.checkCeleryStatus(),
+  
   updateInvitation: (id: string, updates: Partial<Invitation>) => {
     // This would need to be implemented in the API
     console.warn('updateInvitation not implemented in API')

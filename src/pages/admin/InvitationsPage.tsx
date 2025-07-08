@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Mail, Plus, User, Send, Loader2, RotateCcw, Search, Filter, RefreshCw } from "lucide-react";
+import { Mail, Plus, User, Send, Loader2, RotateCcw, Search, Filter, RefreshCw, Clock, CheckCircle, AlertCircle } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -33,7 +33,13 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
-import { useInvitations, useCreateInvitation } from "@/hooks/useQueries";
+import { 
+  useInvitations, 
+  useCreateInvitation, 
+  useResendInvitation, 
+  useTaskStatus,
+  useCeleryStatus 
+} from "@/hooks/useQueries";
 import { toast } from "sonner";
 import type { Invitation } from "@/services/api";
 
@@ -42,6 +48,7 @@ const InvitationsPage = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [resendingInvitationId, setResendingInvitationId] = useState<string | null>(null);
+  const [trackingTaskId, setTrackingTaskId] = useState<string | null>(null);
   const [inviteForm, setInviteForm] = useState({
     name: "",
     email: "",
@@ -50,14 +57,20 @@ const InvitationsPage = () => {
   });
   const { user } = useAuth();
 
-  // Use the custom hooks instead of direct API calls
+  // Use the custom hooks
   const { 
     data: invitationsData, 
     isLoading, 
     error, 
     refetch 
   } = useInvitations();
+  
   const createInvitationMutation = useCreateInvitation();
+  const resendInvitationMutation = useResendInvitation();
+  
+  // NEW: Task status tracking
+  const { data: taskStatus } = useTaskStatus(trackingTaskId);
+  const { data: celeryStatus } = useCeleryStatus();
 
   // Since the hook now returns the unwrapped data directly
   const invitations: Invitation[] = invitationsData?.results || [];
@@ -78,12 +91,17 @@ const InvitationsPage = () => {
     }
 
     try {
-      await createInvitationMutation.mutateAsync({
+      const result = await createInvitationMutation.mutateAsync({
         email: inviteForm.email,
         invitee_name: inviteForm.name,
         invitation_type: inviteForm.invitationType,
         personal_message: inviteForm.message || undefined
       });
+
+      // Track the task if task_id is returned
+      if (result?.task_id) {
+        setTrackingTaskId(result.task_id);
+      }
 
       // Reset form and close modal
       setIsInviteModalOpen(false);
@@ -94,13 +112,31 @@ const InvitationsPage = () => {
     }
   };
 
+  // NEW: Updated resend function with real implementation
   const handleResendInvitation = async (invitationId: string) => {
     setResendingInvitationId(invitationId);
     try {
-      // This would need to be implemented in the API service
-      toast.info('Resend invitation feature is not yet implemented');
+      const result = await resendInvitationMutation.mutateAsync(invitationId);
+      
+      // Track the resend task
+      if (result?.task_id) {
+        setTrackingTaskId(result.task_id);
+      }
+      
+      // Show success message with reminder count
+      if (result?.reminder_count) {
+        toast.success(
+          `Invitation resent successfully! (Reminder #${result.reminder_count})`,
+          {
+            description: result.can_send_more 
+              ? `You can send ${3 - result.reminder_count} more reminders.`
+              : 'This was the final reminder for this invitation.'
+          }
+        );
+      }
     } catch (error) {
-      toast.error('Failed to resend invitation');
+      // Error handling is already done in the mutation
+      console.error('Failed to resend invitation:', error);
     } finally {
       setResendingInvitationId(null);
     }
@@ -142,6 +178,21 @@ const InvitationsPage = () => {
 
   const getInviterName = (invitation: Invitation) => {
     return invitation.invited_by_name || 'Unknown';
+  };
+
+  // NEW: Get reminder status for invitation
+  const getReminderStatus = (invitation: Invitation) => {
+    if (invitation.reminder_count && invitation.reminder_count > 0) {
+      return `${invitation.reminder_count} reminder${invitation.reminder_count > 1 ? 's' : ''} sent`;
+    }
+    return 'No reminders sent';
+  };
+
+  // NEW: Check if reminder can be sent
+  const canSendReminder = (invitation: Invitation) => {
+    return invitation.status === 'pending' && 
+           invitation.can_send_reminder && 
+           (invitation.reminder_count || 0) < 3;
   };
 
   // Handle loading state
@@ -206,6 +257,19 @@ const InvitationsPage = () => {
                 Manage user invitations and track their status
                 {invitations.length > 0 && ` (${invitations.length} total)`}
               </p>
+              {/* NEW: Celery status indicator */}
+              {celeryStatus && (
+                <div className="flex items-center gap-2 mt-2">
+                  {celeryStatus.status === 'healthy' ? (
+                    <CheckCircle className="h-4 w-4 text-green-600" />
+                  ) : (
+                    <AlertCircle className="h-4 w-4 text-red-600" />
+                  )}
+                  <span className="text-xs text-gray-500">
+                    Email workers: {celeryStatus.status} ({celeryStatus.worker_count} active)
+                  </span>
+                </div>
+              )}
             </div>
             <div className="flex gap-2 mt-4 md:mt-0">
               <Button
@@ -321,6 +385,48 @@ const InvitationsPage = () => {
               </Dialog>
             </div>
           </div>
+
+          {/* NEW: Task Status Display */}
+          {trackingTaskId && taskStatus && (
+            <Card className="mb-6 border-blue-200 bg-blue-50">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2">
+                  {taskStatus.ready ? (
+                    taskStatus.successful ? (
+                      <CheckCircle className="h-5 w-5 text-green-600" />
+                    ) : (
+                      <AlertCircle className="h-5 w-5 text-red-600" />
+                    )
+                  ) : (
+                    <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+                  )}
+                  <div className="flex-1">
+                    <p className="font-medium text-blue-900">
+                      {taskStatus.ready ? (
+                        taskStatus.successful ? 'Email sent successfully!' : 'Email sending failed'
+                      ) : 'Sending email...'}
+                    </p>
+                    {taskStatus.ready && taskStatus.result && (
+                      <p className="text-sm text-blue-700">{taskStatus.result.message}</p>
+                    )}
+                    {taskStatus.ready && taskStatus.error && (
+                      <p className="text-sm text-red-700">{taskStatus.error}</p>
+                    )}
+                  </div>
+                  {taskStatus.ready && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setTrackingTaskId(null)}
+                    >
+                      Dismiss
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader>
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -422,6 +528,7 @@ const InvitationsPage = () => {
                           <TableHead>Email</TableHead>
                           <TableHead>Type</TableHead>
                           <TableHead>Status</TableHead>
+                          <TableHead>Reminders</TableHead>
                           <TableHead>Invited By</TableHead>
                           <TableHead>Sent Date</TableHead>
                           <TableHead className="text-right">Actions</TableHead>
@@ -453,6 +560,13 @@ const InvitationsPage = () => {
                                   {invitation.status.charAt(0).toUpperCase() + invitation.status.slice(1)}
                                 </Badge>
                               </TableCell>
+                              {/* NEW: Reminder status column */}
+                              <TableCell>
+                                <div className="flex items-center gap-1 text-sm text-gray-600">
+                                  <Clock className="h-3 w-3" />
+                                  {getReminderStatus(invitation)}
+                                </div>
+                              </TableCell>
                               <TableCell className="text-sm text-gray-600">
                                 {getInviterName(invitation)}
                               </TableCell>
@@ -461,12 +575,12 @@ const InvitationsPage = () => {
                               </TableCell>
                               <TableCell className="text-right">
                                 <div className="flex justify-end gap-2">
-                                  {invitation.status === "pending" && (
+                                  {canSendReminder(invitation) && (
                                     <Button
                                       variant="outline"
                                       size="sm"
                                       onClick={() => handleResendInvitation(invitation.id)}
-                                      disabled={resendingInvitationId === invitation.id}
+                                      disabled={resendingInvitationId === invitation.id || resendInvitationMutation.isPending}
                                       className="hover:bg-airbnb-primary/10"
                                     >
                                       {resendingInvitationId === invitation.id ? (

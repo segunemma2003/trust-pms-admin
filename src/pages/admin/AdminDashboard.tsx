@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { toast } from "sonner";
 import { 
   Dialog,
   DialogContent,
@@ -51,6 +52,13 @@ import {
 } from "recharts";
 import { useAuth } from "@/contexts/AuthContext";
 import { analyticsService, invitationService } from "@/services/api";
+import { 
+  useInvitations, 
+  useCreateInvitation, 
+  useResendInvitation, 
+  useTaskStatus,
+  useCeleryStatus 
+} from "@/hooks/useQueries";
 
 const AdminDashboard = () => {
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
@@ -74,8 +82,10 @@ const AdminDashboard = () => {
   const [metrics, setMetrics] = useState<any>(null);
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [invitations, setInvitations] = useState<any[]>([]);
+  const [resendingInvitationId, setResendingInvitationId] = useState<string | null>(null);
+  const [trackingTaskId, setTrackingTaskId] = useState<string | null>(null);
   const { user } = useAuth();
-
+  const resendInvitationMutation = useResendInvitation();
   const pieData = [
     { name: 'Owners', value: metrics?.totalOwners || 0 },
     { name: 'Users', value: (metrics?.totalUsers || 0) - (metrics?.totalOwners || 0) }
@@ -136,7 +146,32 @@ const AdminDashboard = () => {
   };
 
   const handleResendInvitation = async (invitationId: string) => {
-    alert('Resend invitation is not implemented yet.');
+    setResendingInvitationId(invitationId);
+    try {
+      const result = await resendInvitationMutation.mutateAsync(invitationId);
+      
+      // Track the resend task
+      if (result?.task_id) {
+        setTrackingTaskId(result.task_id);
+      }
+      
+      // Show success message with reminder count
+      if (result?.reminder_count) {
+        toast.success(
+          `Invitation resent successfully! (Reminder #${result.reminder_count})`,
+          {
+            description: result.can_send_more 
+              ? `You can send ${3 - result.reminder_count} more reminders.`
+              : 'This was the final reminder for this invitation.'
+          }
+        );
+      }
+    } catch (error) {
+      // Error handling is already done in the mutation
+      console.error('Failed to resend invitation:', error);
+    } finally {
+      setResendingInvitationId(null);
+    }
   };
 
   const recentInvitations = invitations.slice(0, 3);
