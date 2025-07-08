@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Mail, Plus, User, Send, Loader2, RotateCcw, Search, Filter } from "lucide-react";
+import { Mail, Plus, User, Send, Loader2, RotateCcw, Search, Filter, RefreshCw } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -35,6 +35,7 @@ import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import { useInvitations, useCreateInvitation } from "@/hooks/useQueries";
 import { toast } from "sonner";
+import type { Invitation } from "@/services/api";
 
 const InvitationsPage = () => {
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
@@ -50,10 +51,16 @@ const InvitationsPage = () => {
   const { user } = useAuth();
 
   // Use the custom hooks instead of direct API calls
-  const { data: invitationsData, isLoading, error } = useInvitations();
+  const { 
+    data: invitationsData, 
+    isLoading, 
+    error, 
+    refetch 
+  } = useInvitations();
   const createInvitationMutation = useCreateInvitation();
 
-  const invitations = invitationsData?.data?.results || [];
+  // Since the hook now returns the unwrapped data directly
+  const invitations: Invitation[] = invitationsData?.results || [];
 
   const handleInputChange = (field: string, value: string) => {
     setInviteForm(prev => ({
@@ -100,7 +107,7 @@ const InvitationsPage = () => {
   };
 
   // Filter invitations based on search and status
-  const filteredInvitations = invitations.filter((invitation: any) => {
+  const filteredInvitations = invitations.filter((invitation: Invitation) => {
     const matchesSearch = searchQuery === "" || 
       invitation.invitee_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       invitation.email.toLowerCase().includes(searchQuery.toLowerCase());
@@ -133,11 +140,8 @@ const InvitationsPage = () => {
     });
   };
 
-  const getInviterName = (invitation: any) => {
-    return invitation.invited_by_name || 
-           invitation.invited_by_user?.full_name || 
-           invitation.invited_by_user?.email || 
-           'Unknown';
+  const getInviterName = (invitation: Invitation) => {
+    return invitation.invited_by_name || 'Unknown';
   };
 
   // Handle loading state
@@ -148,7 +152,10 @@ const InvitationsPage = () => {
           <Sidebar type="admin" />
           <div className="flex-1 p-6 overflow-y-auto">
             <div className="flex items-center justify-center h-64">
-              <Loader2 className="h-8 w-8 animate-spin text-airbnb-primary" />
+              <div className="text-center">
+                <Loader2 className="h-8 w-8 animate-spin text-airbnb-primary mx-auto mb-4" />
+                <p className="text-airbnb-light">Loading invitations...</p>
+              </div>
             </div>
           </div>
         </div>
@@ -165,8 +172,18 @@ const InvitationsPage = () => {
           <div className="flex-1 p-6 overflow-y-auto">
             <div className="flex items-center justify-center h-64">
               <div className="text-center">
-                <p className="text-red-600 mb-4">Failed to load invitations</p>
-                <Button onClick={() => window.location.reload()}>
+                <p className="text-red-600 mb-2">Failed to load invitations</p>
+                <p className="text-sm text-gray-500 mb-4">
+                  {error.message?.includes('DOCTYPE') 
+                    ? 'API returned HTML instead of JSON. Please check if the invitations endpoint is working correctly.'
+                    : error.message || 'Unknown error occurred'
+                  }
+                </p>
+                <Button 
+                  onClick={() => refetch()}
+                  className="flex items-center gap-2"
+                >
+                  <RefreshCw className="h-4 w-4" />
                   Retry
                 </Button>
               </div>
@@ -187,105 +204,122 @@ const InvitationsPage = () => {
               <h1 className="text-2xl font-bold text-airbnb-dark">Invitations</h1>
               <p className="text-sm text-airbnb-light mt-1">
                 Manage user invitations and track their status
+                {invitations.length > 0 && ` (${invitations.length} total)`}
               </p>
             </div>
-            <Dialog open={isInviteModalOpen} onOpenChange={setIsInviteModalOpen}>
-              <DialogTrigger asChild>
-                <Button className="mt-4 md:mt-0 bg-airbnb-primary hover:bg-airbnb-primary/90 flex items-center gap-2">
-                  <Plus className="h-4 w-4" />
-                  Send Invitation
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[425px]">
-                <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2">
-                    <Mail className="h-5 w-5 text-airbnb-primary" />
-                    Invite User to Platform
-                  </DialogTitle>
-                  <DialogDescription>
-                    Send an invitation to join the OIFYK platform. An email will be sent with registration instructions.
-                  </DialogDescription>
-                </DialogHeader>
-                <form onSubmit={handleInviteSubmit} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="name">Full Name *</Label>
-                    <Input
-                      id="name"
-                      value={inviteForm.name}
-                      onChange={(e) => handleInputChange("name", e.target.value)}
-                      placeholder="Enter full name"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email Address *</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      value={inviteForm.email}
-                      onChange={(e) => handleInputChange("email", e.target.value)}
-                      placeholder="Enter email address"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="invitationType">User Type *</Label>
-                    <Select 
-                      value={inviteForm.invitationType} 
-                      onValueChange={(value: "owner" | "user" | "admin") => handleInputChange("invitationType", value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select user type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="owner">Property Owner</SelectItem>
-                        <SelectItem value="user">Regular User</SelectItem>
-                        <SelectItem value="admin">Administrator</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-gray-500">
-                      {inviteForm.invitationType === 'owner' 
-                        ? 'Can list and manage properties on the platform'
-                        : inviteForm.invitationType === 'admin'
-                        ? 'Full platform administration access'
-                        : 'Can browse and book properties'
-                      }
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="message">Personal Message (Optional)</Label>
-                    <Textarea
-                      id="message"
-                      value={inviteForm.message}
-                      onChange={(e) => handleInputChange("message", e.target.value)}
-                      placeholder="Add a personal message to the invitation..."
-                      rows={3}
-                    />
-                  </div>
-                  <DialogFooter>
-                    <Button 
-                      type="button" 
-                      variant="outline" 
-                      onClick={() => setIsInviteModalOpen(false)}
-                    >
-                      Cancel
-                    </Button>
-                    <Button 
-                      type="submit" 
-                      className="bg-airbnb-primary hover:bg-airbnb-primary/90"
-                      disabled={createInvitationMutation.isPending}
-                    >
-                      {createInvitationMutation.isPending ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      ) : (
-                        <Send className="h-4 w-4 mr-2" />
-                      )}
-                      Send Invitation
-                    </Button>
-                  </DialogFooter>
-                </form>
-              </DialogContent>
-            </Dialog>
+            <div className="flex gap-2 mt-4 md:mt-0">
+              <Button
+                variant="outline"
+                onClick={() => refetch()}
+                disabled={isLoading}
+                className="flex items-center gap-2"
+              >
+                <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+              <Dialog open={isInviteModalOpen} onOpenChange={setIsInviteModalOpen}>
+                <DialogTrigger asChild>
+                  <Button className="bg-airbnb-primary hover:bg-airbnb-primary/90 flex items-center gap-2">
+                    <Plus className="h-4 w-4" />
+                    Send Invitation
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[425px]">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                      <Mail className="h-5 w-5 text-airbnb-primary" />
+                      Invite User to Platform
+                    </DialogTitle>
+                    <DialogDescription>
+                      Send an invitation to join the OIFYK platform. An email will be sent with registration instructions.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <form onSubmit={handleInviteSubmit} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="name">Full Name *</Label>
+                      <Input
+                        id="name"
+                        value={inviteForm.name}
+                        onChange={(e) => handleInputChange("name", e.target.value)}
+                        placeholder="Enter full name"
+                        required
+                        disabled={createInvitationMutation.isPending}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="email">Email Address *</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        value={inviteForm.email}
+                        onChange={(e) => handleInputChange("email", e.target.value)}
+                        placeholder="Enter email address"
+                        required
+                        disabled={createInvitationMutation.isPending}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="invitationType">User Type *</Label>
+                      <Select 
+                        value={inviteForm.invitationType} 
+                        onValueChange={(value: "owner" | "user" | "admin") => handleInputChange("invitationType", value)}
+                        disabled={createInvitationMutation.isPending}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select user type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="owner">Property Owner</SelectItem>
+                          <SelectItem value="user">Regular User</SelectItem>
+                          <SelectItem value="admin">Administrator</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-gray-500">
+                        {inviteForm.invitationType === 'owner' 
+                          ? 'Can list and manage properties on the platform'
+                          : inviteForm.invitationType === 'admin'
+                          ? 'Full platform administration access'
+                          : 'Can browse and book properties'
+                        }
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="message">Personal Message (Optional)</Label>
+                      <Textarea
+                        id="message"
+                        value={inviteForm.message}
+                        onChange={(e) => handleInputChange("message", e.target.value)}
+                        placeholder="Add a personal message to the invitation..."
+                        rows={3}
+                        disabled={createInvitationMutation.isPending}
+                      />
+                    </div>
+                    <DialogFooter>
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        onClick={() => setIsInviteModalOpen(false)}
+                        disabled={createInvitationMutation.isPending}
+                      >
+                        Cancel
+                      </Button>
+                      <Button 
+                        type="submit" 
+                        className="bg-airbnb-primary hover:bg-airbnb-primary/90"
+                        disabled={createInvitationMutation.isPending}
+                      >
+                        {createInvitationMutation.isPending ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Send className="h-4 w-4 mr-2" />
+                        )}
+                        Send Invitation
+                      </Button>
+                    </DialogFooter>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </div>
           </div>
           <Card>
             <CardHeader>
@@ -362,19 +396,19 @@ const InvitationsPage = () => {
                     </div>
                     <div className="bg-yellow-50 p-3 rounded-lg text-center">
                       <div className="text-2xl font-bold text-yellow-600">
-                        {invitations.filter((inv: any) => inv.status === 'pending').length}
+                        {invitations.filter((inv: Invitation) => inv.status === 'pending').length}
                       </div>
                       <div className="text-sm text-yellow-600">Pending</div>
                     </div>
                     <div className="bg-green-50 p-3 rounded-lg text-center">
                       <div className="text-2xl font-bold text-green-600">
-                        {invitations.filter((inv: any) => inv.status === 'accepted').length}
+                        {invitations.filter((inv: Invitation) => inv.status === 'accepted').length}
                       </div>
                       <div className="text-sm text-green-600">Accepted</div>
                     </div>
                     <div className="bg-red-50 p-3 rounded-lg text-center">
                       <div className="text-2xl font-bold text-red-600">
-                        {invitations.filter((inv: any) => inv.status === 'declined').length}
+                        {invitations.filter((inv: Invitation) => inv.status === 'declined').length}
                       </div>
                       <div className="text-sm text-red-600">Declined</div>
                     </div>
@@ -394,7 +428,7 @@ const InvitationsPage = () => {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredInvitations.map((invitation: any) => {
+                        {filteredInvitations.map((invitation: Invitation) => {
                           return (
                             <TableRow key={invitation.id}>
                               <TableCell className="font-medium">
