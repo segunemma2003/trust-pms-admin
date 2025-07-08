@@ -29,7 +29,7 @@ const Sidebar = ({ type }: SidebarProps) => {
   const adminLinks = [
     { name: 'Dashboard', icon: LayoutDashboard, path: '/admin' },
     { name: 'Owners', icon: Users, path: '/admin/owners' },
-    { name: 'Users', icon: User, path: '/admin/users' },
+    // { name: 'Users', icon: User, path: '/admin/users' },
     { name: 'Invitations', icon: FileText, path: '/admin/invitations' },
     { name: 'All Properties', icon: Building, path: '/admin/all-properties' },
     // { name: 'Suggested Properties', icon: Map, path: '/admin/suggested-properties' },

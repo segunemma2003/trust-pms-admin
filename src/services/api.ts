@@ -69,6 +69,7 @@ export interface Booking {
 }
 
 export interface Invitation {
+  task_id: any
   id: string
   email: string
   invitee_name: string
