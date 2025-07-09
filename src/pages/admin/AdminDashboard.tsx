@@ -214,7 +214,7 @@ const AdminDashboard = () => {
                 </Link>
               </Button>
               
-              <Dialog open={isInviteModalOpen} onOpenChange={setIsInviteModalOpen}>
+              {/* <Dialog open={isInviteModalOpen} onOpenChange={setIsInviteModalOpen}>
                 <DialogTrigger asChild>
                   <Button className="bg-airbnb-primary hover:bg-airbnb-primary/90 flex items-center gap-2">
                     <Plus className="h-4 w-4" />
@@ -281,7 +281,7 @@ const AdminDashboard = () => {
                       </p>
                     </div>
                     
-                    {/* <div className="space-y-2">
+                    <div className="space-y-2">
                       <Label htmlFor="message">Personal Message (Optional)</Label>
                       <Textarea
                         id="message"
@@ -290,7 +290,7 @@ const AdminDashboard = () => {
                         placeholder="Add a personal message to the invitation..."
                         rows={3}
                       />
-                    </div> */}
+                    </div>
                     
                     <DialogFooter>
                       <Button 
@@ -310,7 +310,7 @@ const AdminDashboard = () => {
                     </DialogFooter>
                   </form>
                 </DialogContent>
-              </Dialog>
+              </Dialog> */}
             </div>
           </div>
           

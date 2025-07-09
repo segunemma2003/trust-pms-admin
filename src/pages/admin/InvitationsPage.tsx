@@ -334,8 +334,8 @@ const InvitationsPage = () => {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="owner">Property Owner</SelectItem>
-                          <SelectItem value="user">Regular User</SelectItem>
-                          <SelectItem value="admin">Administrator</SelectItem>
+                          {/* <SelectItem value="user">Regular User</SelectItem> */}
+                          {/* <SelectItem value="admin">Administrator</SelectItem> */}
                         </SelectContent>
                       </Select>
                       <p className="text-xs text-gray-500">
@@ -347,7 +347,7 @@ const InvitationsPage = () => {
                         }
                       </p>
                     </div>
-                    <div className="space-y-2">
+                    {/* <div className="space-y-2">
                       <Label htmlFor="message">Personal Message (Optional)</Label>
                       <Textarea
                         id="message"
@@ -357,7 +357,7 @@ const InvitationsPage = () => {
                         rows={3}
                         disabled={createInvitationMutation.isPending}
                       />
-                    </div>
+                    </div> */}
                     <DialogFooter>
                       <Button 
                         type="button" 

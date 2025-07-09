@@ -278,7 +278,7 @@ const ManageOwners = () => {
                 Refresh
               </Button>
               
-              <Dialog open={isInviteModalOpen} onOpenChange={setIsInviteModalOpen}>
+              {/* <Dialog open={isInviteModalOpen} onOpenChange={setIsInviteModalOpen}>
                 <DialogTrigger asChild>
                   <Button className="bg-airbnb-primary hover:bg-airbnb-primary/90 flex items-center gap-2">
                     <UserPlus className="h-4 w-4" />
@@ -355,7 +355,7 @@ const ManageOwners = () => {
                     </DialogFooter>
                   </form>
                 </DialogContent>
-              </Dialog>
+              </Dialog> */}
             </div>
           </div>
 
