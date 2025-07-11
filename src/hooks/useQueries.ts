@@ -4,7 +4,9 @@ import {
   invitationService, 
   propertyService, 
   bookingService, 
-  analyticsService 
+  analyticsService,
+  messageService,
+  apiClient
 } from '@/services/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { toast } from 'sonner'
@@ -36,6 +38,105 @@ export const useUsersByType = (userType: 'admin' | 'owner' | 'user') => {
   })
 }
 
+// Owner-specific queries
+export const useOwners = (params?: {
+  search?: string
+  status?: string
+  page?: number
+  page_size?: number
+}) => {
+  return useQuery({
+    queryKey: ['owners', params],
+    queryFn: async () => {
+      const result = await userService.getOwners(params);
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      return result.data;
+    },
+    staleTime: 2 * 60 * 1000, // Cache for 2 minutes
+  })
+}
+
+export const useOwnersWithStats = () => {
+  return useQuery({
+    queryKey: ['owners', 'with-stats'],
+    queryFn: async () => {
+      const result = await userService.getOwnersWithStats();
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      return result.data;
+    },
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  })
+}
+
+export const useOwnerStats = (ownerId: string) => {
+  return useQuery({
+    queryKey: ['owner-stats', ownerId],
+    queryFn: async () => {
+      const result = await userService.getOwnerStats(ownerId);
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      return result.data;
+    },
+    enabled: !!ownerId,
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  })
+}
+
+// Mutation for updating owner status
+export const useUpdateOwnerStatus = () => {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: async ({ ownerId, status }: { ownerId: string; status: string }) => {
+      const result = await userService.updateUser(ownerId, { status } as any);
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      return result.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['owners'] })
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      toast.success('Owner status updated successfully!')
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to update owner status: ${error.message}`)
+    },
+  })
+}
+
+// Mutation for sending messages to owners
+export const useSendOwnerMessage = () => {
+  return useMutation({
+    mutationFn: async ({ 
+      ownerId, 
+      subject, 
+      message 
+    }: { 
+      ownerId: string; 
+      subject: string; 
+      message: string 
+    }) => {
+      const result = await messageService.sendMessage(ownerId, subject, message);
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      return result.data;
+    },
+    onSuccess: () => {
+      toast.success('Message sent successfully!')
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to send message: ${error.message}`)
+    },
+  })
+}
+
 // Invitation Queries
 export const useInvitations = () => {
   return useQuery({
@@ -63,6 +164,7 @@ export const useCreateInvitation = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invitations'] })
+      queryClient.invalidateQueries({ queryKey: ['owners'] })
       toast.success('Invitation sent successfully!')
     },
     onError: (error: Error) => {
@@ -71,7 +173,7 @@ export const useCreateInvitation = () => {
   })
 }
 
-// NEW: Resend Invitation Mutations
+// Resend Invitation Mutations
 export const useResendInvitation = () => {
   const queryClient = useQueryClient()
   
@@ -117,7 +219,7 @@ export const useResendInvitationByEmail = () => {
   })
 }
 
-// NEW: Task Status Query
+// Task Status Query
 export const useTaskStatus = (taskId: string | null) => {
   return useQuery({
     queryKey: ['task-status', taskId],
@@ -139,7 +241,8 @@ export const useTaskStatus = (taskId: string | null) => {
     },
   })
 }
-// NEW: Celery Status Query
+
+// Celery Status Query
 export const useCeleryStatus = () => {
   return useQuery({
     queryKey: ['celery-status'],
@@ -181,17 +284,19 @@ export const useActiveProperties = () => {
   })
 }
 
-export const usePropertiesByOwner = (ownerId?: string) => {
+export const usePropertiesByOwner = (ownerId?: string, status?: string) => {
   return useQuery({
-    queryKey: ['properties', 'owner', ownerId],
+    queryKey: ['properties', 'owner', ownerId, status],
     queryFn: async () => {
-      const result = await propertyService.getPropertiesByOwner(ownerId!);
+      if (!ownerId) return null;
+      const result = await propertyService.getPropertiesByOwner(ownerId, status);
       if (result.error) {
         throw new Error(result.error);
       }
       return result.data;
     },
     enabled: !!ownerId,
+    staleTime: 3 * 60 * 1000, // Cache for 3 minutes
   })
 }
 

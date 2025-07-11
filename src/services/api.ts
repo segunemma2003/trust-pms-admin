@@ -12,6 +12,9 @@ export interface User {
   trust_network_size?: number
   onboarding_completed: boolean
   date_joined: string
+  email_verified?: boolean
+  last_active_at?: string
+  created_at?: string
 }
 
 export interface Property {
@@ -35,6 +38,7 @@ export interface Property {
   status: 'draft' | 'active' | 'inactive'
   is_featured: boolean
   owner_name: string
+  owner: string
   booking_count: number
   created_at: string
 }
@@ -84,6 +88,26 @@ export interface Invitation {
   reminder_count?: number
   last_reminder_sent?: string
   created_at: string
+}
+
+export interface OwnerWithStats extends User {
+  properties_count: number
+  active_properties_count: number
+  total_bookings: number
+  total_revenue: number
+  last_active_at?: string
+}
+
+export interface OwnerPropertyStats {
+  owner_id: string
+  properties_count: number
+  active_properties_count: number
+  property_statuses: {
+    draft: number
+    active: number
+    inactive: number
+    pending_approval: number
+  }
 }
 
 // New type for resend response
@@ -193,7 +217,8 @@ class APIClient {
     }
   }
 
-  private async makeRequest<T>(
+  // Make this method public so it can be used in hooks
+  public async makeRequest<T>(
     endpoint: string,
     options: RequestInit = {}
   ): Promise<{ data: T | null; error: string | null }> {
@@ -233,7 +258,7 @@ class APIClient {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.error || `HTTP ${response.status}`)
+        throw new Error(errorData.error || errorData.detail || `HTTP ${response.status}`)
       }
 
       const data = await response.json()
@@ -281,8 +306,15 @@ class APIClient {
     return this.makeRequest<User>('/users/profile/')
   }
 
-  async updateProfile(updates: { full_name?: string; phone?: string }) {
+  async updateProfile(updates: { full_name?: string; phone?: string; status?: string }) {
     return this.makeRequest<User>('/users/update_profile/', {
+      method: 'PATCH',
+      body: JSON.stringify(updates)
+    })
+  }
+
+  async updateUserById(userId: string, updates: Partial<User>) {
+    return this.makeRequest<User>(`/users/${userId}/update/`, {
       method: 'PATCH',
       body: JSON.stringify(updates)
     })
@@ -293,7 +325,54 @@ class APIClient {
     if (search) params.append('search', search)
     if (userType) params.append('user_type', userType)
     
-    return this.makeRequest<User[]>(`/users/search/?${params.toString()}`)
+    return this.makeRequest<{
+      count: number
+      next?: string
+      previous?: string
+      results: User[]
+    }>(`/users/search/?${params.toString()}`)
+  }
+
+  // Owner-specific methods
+  async getOwners(params?: {
+    search?: string
+    status?: string
+    page?: number
+    page_size?: number
+  }) {
+    const searchParams = new URLSearchParams()
+    if (params?.search) searchParams.append('search', params.search)
+    if (params?.status) searchParams.append('status', params.status)
+    if (params?.page) searchParams.append('page', params.page.toString())
+    if (params?.page_size) searchParams.append('page_size', params.page_size.toString())
+    
+    // Add user_type filter for owners
+    searchParams.append('user_type', 'owner')
+    
+    return this.makeRequest<{
+      count: number
+      next?: string
+      previous?: string
+      results: User[]
+    }>(`/users/search/?${searchParams.toString()}`)
+  }
+
+  async getOwnerStats(ownerId: string) {
+    return this.makeRequest<{
+      properties_count: number
+      active_properties_count: number
+      total_bookings: number
+      total_revenue: number
+      recent_bookings: number
+      approval_rate: number
+    }>(`/analytics/owner_stats/?owner_id=${ownerId}`)
+  }
+
+  async getAllOwnersWithStats() {
+    return this.makeRequest<{
+      count: number
+      results: OwnerWithStats[]
+    }>('/users/owners_with_stats/')
   }
 
   // Property methods
@@ -303,6 +382,7 @@ class APIClient {
     max_price?: number
     bedrooms?: number
     max_guests?: number
+    status?: string
     page?: number
     page_size?: number
   }) {
@@ -321,6 +401,22 @@ class APIClient {
       previous?: string
       results: Property[]
     }>(`/properties/?${params.toString()}`)
+  }
+
+  async getPropertiesByOwner(ownerId: string, status?: string) {
+    const params = new URLSearchParams({ owner_id: ownerId })
+    if (status) params.append('status', status)
+    
+    return this.makeRequest<{
+      count: number
+      owner: {
+        id: string
+        full_name: string
+        email: string
+        properties_count: number
+      }
+      results: Property[]
+    }>(`/properties/by_owner/?${params.toString()}`)
   }
 
   async createProperty(property: Omit<Property, 'id' | 'created_at' | 'owner_name' | 'booking_count' | 'is_featured'>) {
@@ -407,14 +503,14 @@ class APIClient {
     })
   }
 
-  // NEW: Resend invitation by ID
+  // Resend invitation by ID
   async resendInvitation(invitationId: string) {
     return this.makeRequest<ResendInvitationResponse>(`/invitations/${invitationId}/resend_invitation/`, {
       method: 'POST'
     })
   }
 
-  // NEW: Resend invitation by email
+  // Resend invitation by email
   async resendInvitationByEmail(email: string, invitationType: 'user' | 'owner' | 'admin' = 'user') {
     return this.makeRequest<ResendInvitationResponse>('/invitations/resend_by_email/', {
       method: 'POST',
@@ -425,7 +521,7 @@ class APIClient {
     })
   }
 
-  // NEW: Check task status
+  // Check task status
   async checkTaskStatus(taskId: string) {
     return this.makeRequest<{
       task_id: string
@@ -440,7 +536,7 @@ class APIClient {
     }>(`/invitations/check_task_status/?task_id=${taskId}`)
   }
 
-  // NEW: Check Celery status
+  // Check Celery status
   async checkCeleryStatus() {
     return this.makeRequest<{
       status: string
@@ -506,6 +602,18 @@ class APIClient {
     return this.makeRequest<any>(`/analytics/revenue_analytics/?${params.toString()}`)
   }
 
+  // Messaging methods
+  async sendMessage(recipientId: string, subject: string, message: string) {
+    return this.makeRequest<{ message: string; sent: boolean }>('/notifications/send_message/', {
+      method: 'POST',
+      body: JSON.stringify({
+        recipient_id: recipientId,
+        subject,
+        message
+      })
+    })
+  }
+
   // File upload
   async uploadFile(file: File, folder?: string) {
     const formData = new FormData()
@@ -542,9 +650,13 @@ const apiClient = new APIClient(API_BASE_URL)
 // Service exports using the API client
 export const userService = {
   getUsers: () => apiClient.searchUsers(),
-  updateUser: (id: string, updates: Partial<User>) => apiClient.updateProfile(updates),
+  updateUser: (id: string, updates: Partial<User>) => apiClient.updateUserById(id, updates),
   getUsersByType: (userType: string) => apiClient.searchUsers(undefined, userType),
-  getCurrentUser: () => apiClient.getCurrentUser()
+  getCurrentUser: () => apiClient.getCurrentUser(),
+  getOwners: (params?: Parameters<typeof apiClient.getOwners>[0]) => 
+    apiClient.getOwners(params),
+  getOwnersWithStats: () => apiClient.getAllOwnersWithStats(),
+  getOwnerStats: (ownerId: string) => apiClient.getOwnerStats(ownerId)
 }
 
 export const authService = {
@@ -567,18 +679,15 @@ export const invitationService = {
   
   getInvitations: () => apiClient.getInvitations(),
   
-  // NEW: Resend invitation methods
   resendInvitation: (invitationId: string) => apiClient.resendInvitation(invitationId),
   
   resendInvitationByEmail: (email: string, invitationType: 'user' | 'owner' | 'admin' = 'user') => 
     apiClient.resendInvitationByEmail(email, invitationType),
   
-  // NEW: Task monitoring methods
   checkTaskStatus: (taskId: string) => apiClient.checkTaskStatus(taskId),
   checkCeleryStatus: () => apiClient.checkCeleryStatus(),
   
   updateInvitation: (id: string, updates: Partial<Invitation>) => {
-    // This would need to be implemented in the API
     console.warn('updateInvitation not implemented in API')
     return Promise.resolve({ data: null, error: 'Not implemented' })
   },
@@ -599,17 +708,13 @@ export const propertyService = {
   getProperties: (filters?: Parameters<typeof apiClient.getProperties>[0]) => 
     apiClient.getProperties(filters),
   
-  getPropertiesByOwner: (ownerId: string) => {
-    // This would need filtering by owner on the API side
-    return apiClient.getProperties()
-  },
+  getPropertiesByOwner: (ownerId: string, status?: string) => 
+    apiClient.getPropertiesByOwner(ownerId, status),
   
-  getActiveProperties: () => apiClient.getProperties(),
+  getActiveProperties: () => apiClient.getProperties({ status: 'active' }),
   
-  getPropertiesByStatus: (status: string) => {
-    // This would need filtering by status on the API side
-    return apiClient.getProperties()
-  },
+  getPropertiesByStatus: (status: string) => 
+    apiClient.getProperties({ status }),
   
   createProperty: (property: Parameters<typeof apiClient.createProperty>[0]) => 
     apiClient.createProperty(property),
@@ -618,21 +723,24 @@ export const propertyService = {
     apiClient.updateProperty(id, updates),
   
   submitForApproval: (propertyId: string, submitterId: string) => {
-    // This would need to be implemented in the API
-    console.warn('submitForApproval not implemented in API')
-    return Promise.resolve({ data: true, error: null })
+    return apiClient.makeRequest<any>(`/properties/${propertyId}/submit_for_approval/`, {
+      method: 'POST',
+      body: JSON.stringify({ submitted_by: submitterId })
+    })
   },
   
   approveProperty: (propertyId: string, adminId: string, notes?: string) => {
-    // This would need to be implemented in the API
-    console.warn('approveProperty not implemented in API')
-    return Promise.resolve({ data: true, error: null })
+    return apiClient.makeRequest<any>(`/properties/${propertyId}/approve/`, {
+      method: 'POST',
+      body: JSON.stringify({ approved_by: adminId, notes })
+    })
   },
   
   rejectProperty: (propertyId: string, adminId: string, reason: string) => {
-    // This would need to be implemented in the API
-    console.warn('rejectProperty not implemented in API')
-    return Promise.resolve({ data: true, error: null })
+    return apiClient.makeRequest<any>(`/properties/${propertyId}/reject/`, {
+      method: 'POST',
+      body: JSON.stringify({ rejected_by: adminId, reason })
+    })
   }
 }
 
@@ -666,6 +774,11 @@ export const analyticsService = {
   getRecentActivity: (limit = 10) => apiClient.getRecentActivity(limit),
   getRevenueAnalytics: (filters: Parameters<typeof apiClient.getRevenueAnalytics>[0]) => 
     apiClient.getRevenueAnalytics(filters)
+}
+
+export const messageService = {
+  sendMessage: (recipientId: string, subject: string, message: string) =>
+    apiClient.sendMessage(recipientId, subject, message)
 }
 
 // Export the API client for direct use

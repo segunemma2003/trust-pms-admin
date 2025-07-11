@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import Layout from "@/components/layout/Layout";
 import Sidebar from "@/components/layout/Sidebar";
@@ -23,7 +23,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, Mail, MoreHorizontal, Check, X, UserPlus, Send, Loader2, Building, Calendar, RefreshCw } from "lucide-react";
+import { 
+  Search, 
+  Mail, 
+  MoreHorizontal, 
+  Check, 
+  X, 
+  UserPlus, 
+  Send, 
+  Loader2, 
+  Building, 
+  Calendar, 
+  RefreshCw,
+  TrendingUp,
+  Clock,
+  Star,
+  AlertCircle,
+  Eye,
+  MessageSquare,
+  Settings
+} from "lucide-react";
 import {
   Table,
   TableBody,
@@ -36,31 +55,41 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-
-// Import the services and hooks
 import { 
-  useUsersByType, 
-  useCreateInvitation, 
-  useProperties 
+  useUsersByType,
+  useDashboardMetrics,
+  useCreateInvitation,
+  useResendInvitationByEmail,
+  useUpdateOwnerStatus,
+  useSendOwnerMessage,
+  useProperties
 } from "@/hooks/useQueries";
 
 const ManageOwners = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
+  const [selectedOwner, setSelectedOwner] = useState<any>(null);
   const [inviteForm, setInviteForm] = useState({
     name: "",
     email: "",
     message: ""
   });
+  const [messageForm, setMessageForm] = useState({
+    subject: "",
+    message: ""
+  });
+
   const { user } = useAuth();
 
-  // Use the hooks for data fetching
+  // Use the existing hook to fetch owners (users with user_type == 'owner')
   const { 
     data: ownersData, 
     isLoading: ownersLoading, 
@@ -69,70 +98,106 @@ const ManageOwners = () => {
   } = useUsersByType('owner');
 
   const { 
+    data: dashboardData, 
+    isLoading: dashboardLoading 
+  } = useDashboardMetrics();
+
+  const { 
     data: propertiesData, 
     isLoading: propertiesLoading 
   } = useProperties();
 
+  // Mutations
   const createInvitationMutation = useCreateInvitation();
+  const resendInvitationMutation = useResendInvitationByEmail();
+  const updateOwnerStatusMutation = useUpdateOwnerStatus();
+  const sendMessageMutation = useSendOwnerMessage();
 
-  // Process the data
-  //  const owners = ownersData?.data?.results || ownersData?.data || [];
-  // const properties = propertiesData?.data?.results || propertiesData?.data || [];
-   const processOwnersData = (data: any) => {
-    if (!data?.data) return [];
+  // Process the owners data - handle different response formats
+  const owners = useMemo(() => {
+    if (!ownersData) return [];
     
-    // If it's a paginated response with results
-    if (Array.isArray(data.data.results)) {
-      return data.data.results;
+    // Handle paginated response with results
+    if (ownersData.results && Array.isArray(ownersData.results)) {
+      return ownersData.results;
     }
     
-    // If it's a direct array response
-    if (Array.isArray(data.data)) {
-      return data.data;
+    // Handle direct array response
+    if (Array.isArray(ownersData)) {
+      return ownersData;
     }
     
-    return [];
-  };
-
-  const processPropertiesData = (data: any) => {
-    if (!data?.data) return [];
-    
-    // If it's a paginated response with results
-    if (Array.isArray(data.data.results)) {
-      return data.data.results;
-    }
-    
-    // If it's a direct array response
-    if (Array.isArray(data.data)) {
-      return data.data;
+    // Handle nested data structure
+    if (ownersData.data) {
+      if (Array.isArray(ownersData.data.results)) {
+        return ownersData.data.results;
+      }
+      if (Array.isArray(ownersData.data)) {
+        return ownersData.data;
+      }
     }
     
     return [];
+  }, [ownersData]);
+
+  // Process properties data for counting
+  const properties = useMemo(() => {
+    if (!propertiesData?.results) return [];
+    return propertiesData.results;
+  }, [propertiesData]);
+
+  // Calculate enhanced stats
+  const stats = useMemo(() => {
+    console.log('Owners data:', ownersData); // Debug log
+    console.log('Processed owners:', owners); // Debug log
+    
+    const totalOwners = owners.length;
+    const activeOwners = owners.filter((o: any) => o.status === 'active').length;
+    const pendingOwners = owners.filter((o: any) => o.status === 'pending').length;
+    const verifiedOwners = owners.filter((o: any) => o.email_verified).length;
+    
+    return {
+      totalOwners,
+      activeOwners,
+      pendingOwners,
+      verifiedOwners,
+      verificationRate: totalOwners > 0 ? Math.round((verifiedOwners / totalOwners) * 100) : 0,
+      // Get additional stats from dashboard if available
+      totalProperties: dashboardData?.total_properties || properties.length,
+      activeProperties: dashboardData?.active_properties || properties.filter(p => p.status === 'active').length,
+      totalBookings: dashboardData?.total_bookings || 0
+    };
+  }, [owners, dashboardData, properties, ownersData]);
+
+  // Enhanced filtering - client-side since we're loading all owners
+  const filteredOwners = useMemo(() => {
+    return owners.filter((owner: any) => {
+      // Search filter - check name and email
+      const matchesSearch = !searchQuery || 
+        owner.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        owner.email.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      // Status filter
+      const matchesStatus = statusFilter === "all" || owner.status === statusFilter;
+      
+      return matchesSearch && matchesStatus;
+    });
+  }, [owners, searchQuery, statusFilter]);
+
+  // Get property count for an owner
+  const getOwnerPropertyCount = (ownerId: string) => {
+    return properties.filter((property: any) => property.owner === ownerId).length;
   };
-
-  // Use the processing functions
-  const owners = processOwnersData(ownersData);
-  const properties = processPropertiesData(propertiesData);
-
-  // Calculate stats
-  const stats = {
-    totalOwners: owners.length,
-    activeOwners: owners.filter((o: any) => o.status === 'active').length,
-    pendingOwners: owners.filter((o: any) => o.status === 'pending').length,
-    totalProperties: properties.length
-  };
-
-  // Filter owners based on search and status
-  const filteredOwners = owners.filter((owner: any) => {
-    const matchesSearch = searchQuery === "" || 
-      owner.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      owner.email.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === "all" || owner.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
 
   const handleInputChange = (field: string, value: string) => {
     setInviteForm(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleMessageInputChange = (field: string, value: string) => {
+    setMessageForm(prev => ({
       ...prev,
       [field]: value
     }));
@@ -151,25 +216,61 @@ const ManageOwners = () => {
       
       setIsInviteModalOpen(false);
       setInviteForm({ name: '', email: '', message: '' });
-      
-      // Refetch owners to get updated data
       refetchOwners();
     } catch (error) {
-      // Error handling is already done in the mutation
       console.error('Failed to send invitation:', error);
     }
   };
 
-  const handleResendInvitation = async (ownerId: string, ownerName: string) => {
-    toast.info('Resend invitation is not implemented yet.');
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedOwner) return;
+
+    try {
+      await sendMessageMutation.mutateAsync({
+        ownerId: selectedOwner.id,
+        subject: messageForm.subject,
+        message: messageForm.message
+      });
+      
+      setIsMessageModalOpen(false);
+      setMessageForm({ subject: '', message: '' });
+      setSelectedOwner(null);
+    } catch (error) {
+      console.error('Failed to send message:', error);
+    }
   };
 
-  const handleSendMessage = (ownerName: string, ownerEmail: string) => {
-    window.location.href = `mailto:${ownerEmail}?subject=Message from OIFYK Admin&body=Hi ${ownerName},%0D%0A%0D%0A`;
+  const handleResendInvitation = async (ownerEmail: string, ownerName: string) => {
+    try {
+      await resendInvitationMutation.mutateAsync({
+        email: ownerEmail,
+        invitationType: 'owner'
+      });
+    } catch (error) {
+      console.error('Failed to resend invitation:', error);
+    }
   };
 
-  const handleViewProperties = (ownerId: string) => {
-    window.open(`/admin/all-properties?owner=${ownerId}`, '_blank');
+  const handleStatusUpdate = async (ownerId: string, newStatus: string) => {
+    try {
+      await updateOwnerStatusMutation.mutateAsync({
+        ownerId,
+        status: newStatus
+      });
+      refetchOwners();
+    } catch (error) {
+      console.error('Failed to update owner status:', error);
+    }
+  };
+
+  const handleOpenMessage = (owner: any) => {
+    setSelectedOwner(owner);
+    setMessageForm({
+      subject: `Message from ${user?.full_name || 'OIFYK Admin'}`,
+      message: `Hi ${owner.full_name || 'there'},\n\n`
+    });
+    setIsMessageModalOpen(true);
   };
 
   const handleRefresh = () => {
@@ -182,6 +283,18 @@ const ManageOwners = () => {
       month: 'short',
       day: 'numeric'
     });
+  };
+
+  const formatLastSeen = (dateString?: string) => {
+    if (!dateString) return 'Never';
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
+    
+    if (diffInHours < 1) return 'Just now';
+    if (diffInHours < 24) return `${diffInHours}h ago`;
+    if (diffInHours < 168) return `${Math.floor(diffInHours / 24)}d ago`;
+    return formatDate(dateString);
   };
 
   const getStatusBadgeClass = (status: string) => {
@@ -199,12 +312,7 @@ const ManageOwners = () => {
     }
   };
 
-  // Enhanced property count calculation
-  const getOwnerPropertyCount = (ownerId: string) => {
-    return properties.filter((property: any) => property.owner === ownerId).length;
-  };
-
-  const loading = ownersLoading || propertiesLoading;
+  const loading = ownersLoading || dashboardLoading || propertiesLoading;
 
   // Error handling
   if (ownersError && !loading) {
@@ -215,12 +323,12 @@ const ManageOwners = () => {
           <div className="flex-1 p-6 overflow-y-auto">
             <div className="flex items-center justify-center h-64">
               <div className="text-center">
-                <X className="h-12 w-12 text-red-500 mx-auto mb-4" />
+                <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">Failed to Load Owners</h3>
                 <p className="text-sm text-gray-600 mb-4">
-                  There was an error loading the owners data. Please try again.
+                  {ownersError.message || 'There was an error loading the owners data. Please try again.'}
                 </p>
-                <Button onClick={handleRefresh} className="bg-airbnb-primary hover:bg-airbnb-primary/90">
+                <Button onClick={handleRefresh} className="bg-red-600 hover:bg-red-700">
                   <RefreshCw className="h-4 w-4 mr-2" />
                   Retry
                 </Button>
@@ -240,10 +348,10 @@ const ManageOwners = () => {
           <div className="flex-1 p-6 overflow-y-auto">
             <div className="flex items-center justify-center h-64">
               <div className="text-center">
-                <Loader2 className="h-12 w-12 animate-spin text-airbnb-primary mx-auto mb-4" />
+                <Loader2 className="h-12 w-12 animate-spin text-blue-600 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">Loading Owners</h3>
                 <p className="text-sm text-gray-600">
-                  Fetching owner data and calculating property counts...
+                  Fetching owner data and platform statistics...
                 </p>
               </div>
             </div>
@@ -261,9 +369,9 @@ const ManageOwners = () => {
         <div className="flex-1 p-6 overflow-y-auto">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
             <div>
-              <h1 className="text-2xl font-bold text-airbnb-dark">Manage Owners</h1>
-              <p className="text-sm text-airbnb-light mt-1">
-                View and manage all property owners ({owners.length} total)
+              <h1 className="text-2xl font-bold text-gray-900">Manage Owners</h1>
+              <p className="text-sm text-gray-600 mt-1">
+                View and manage all property owners ({stats.totalOwners} total)
               </p>
             </div>
             
@@ -278,9 +386,9 @@ const ManageOwners = () => {
                 Refresh
               </Button>
               
-              {/* <Dialog open={isInviteModalOpen} onOpenChange={setIsInviteModalOpen}>
+              <Dialog open={isInviteModalOpen} onOpenChange={setIsInviteModalOpen}>
                 <DialogTrigger asChild>
-                  <Button className="bg-airbnb-primary hover:bg-airbnb-primary/90 flex items-center gap-2">
+                  <Button className="bg-blue-600 hover:bg-blue-700 flex items-center gap-2">
                     <UserPlus className="h-4 w-4" />
                     Invite New Owner
                   </Button>
@@ -288,7 +396,7 @@ const ManageOwners = () => {
                 <DialogContent className="sm:max-w-[425px]">
                   <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
-                      <Mail className="h-5 w-5 text-airbnb-primary" />
+                      <Mail className="h-5 w-5 text-blue-600" />
                       Invite Property Owner
                     </DialogTitle>
                     <DialogDescription>
@@ -342,7 +450,7 @@ const ManageOwners = () => {
                       </Button>
                       <Button 
                         type="submit" 
-                        className="bg-airbnb-primary hover:bg-airbnb-primary/90"
+                        className="bg-blue-600 hover:bg-blue-700"
                         disabled={createInvitationMutation.isPending}
                       >
                         {createInvitationMutation.isPending ? (
@@ -355,34 +463,76 @@ const ManageOwners = () => {
                     </DialogFooter>
                   </form>
                 </DialogContent>
-              </Dialog> */}
+              </Dialog>
             </div>
           </div>
 
-          {/* Owner Statistics */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          {/* Enhanced Statistics */}
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
             <Card>
               <CardContent className="p-4">
-                <div className="text-2xl font-bold text-blue-600">{stats.totalOwners}</div>
-                <div className="text-sm text-gray-600">Total Owners</div>
+                <div className="flex items-center gap-2">
+                  <UserPlus className="h-5 w-5 text-blue-600" />
+                  <div>
+                    <div className="text-2xl font-bold text-blue-600">{stats.totalOwners}</div>
+                    <div className="text-sm text-gray-600">Total Owners</div>
+                  </div>
+                </div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className="text-2xl font-bold text-green-600">{stats.activeOwners}</div>
-                <div className="text-sm text-gray-600">Active</div>
+                <div className="flex items-center gap-2">
+                  <Check className="h-5 w-5 text-green-600" />
+                  <div>
+                    <div className="text-2xl font-bold text-green-600">{stats.activeOwners}</div>
+                    <div className="text-sm text-gray-600">Active</div>
+                  </div>
+                </div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className="text-2xl font-bold text-yellow-600">{stats.pendingOwners}</div>
-                <div className="text-sm text-gray-600">Pending</div>
+                <div className="flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-yellow-600" />
+                  <div>
+                    <div className="text-2xl font-bold text-yellow-600">{stats.pendingOwners}</div>
+                    <div className="text-sm text-gray-600">Pending</div>
+                  </div>
+                </div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className="text-2xl font-bold text-purple-600">{stats.totalProperties}</div>
-                <div className="text-sm text-gray-600">Properties</div>
+                <div className="flex items-center gap-2">
+                  <Star className="h-5 w-5 text-purple-600" />
+                  <div>
+                    <div className="text-2xl font-bold text-purple-600">{stats.verificationRate}%</div>
+                    <div className="text-sm text-gray-600">Verified</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2">
+                  <Building className="h-5 w-5 text-indigo-600" />
+                  <div>
+                    <div className="text-2xl font-bold text-indigo-600">{stats.totalProperties}</div>
+                    <div className="text-sm text-gray-600">Properties</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5 text-emerald-600" />
+                  <div>
+                    <div className="text-2xl font-bold text-emerald-600">{stats.totalBookings}</div>
+                    <div className="text-sm text-gray-600">Bookings</div>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -442,7 +592,7 @@ const ManageOwners = () => {
                   {!searchQuery && statusFilter === "all" ? (
                     <Button 
                       onClick={() => setIsInviteModalOpen(true)}
-                      className="bg-airbnb-primary hover:bg-airbnb-primary/90"
+                      className="bg-blue-600 hover:bg-blue-700"
                     >
                       <UserPlus className="h-4 w-4 mr-2" />
                       Invite First Owner
@@ -465,10 +615,11 @@ const ManageOwners = () => {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Owner</TableHead>
-                        <TableHead>Email</TableHead>
+                        <TableHead>Contact</TableHead>
                         <TableHead>Properties</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Verified</TableHead>
+                        <TableHead>Last Seen</TableHead>
                         <TableHead>Joined</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
@@ -478,7 +629,7 @@ const ManageOwners = () => {
                         const propertyCount = getOwnerPropertyCount(owner.id);
                         
                         return (
-                          <TableRow key={owner.id}>
+                          <TableRow key={owner.id} className="hover:bg-gray-50">
                             <TableCell>
                               <div className="flex items-center gap-3">
                                 <div className="h-10 w-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-medium">
@@ -486,16 +637,21 @@ const ManageOwners = () => {
                                 </div>
                                 <div>
                                   <div className="font-medium">{owner.full_name || 'N/A'}</div>
-                                  {owner.phone && (
-                                    <div className="text-xs text-gray-500">{owner.phone}</div>
-                                  )}
+                                  <div className="text-xs text-gray-500">
+                                    ID: {owner.id.slice(0, 8)}...
+                                  </div>
                                 </div>
                               </div>
                             </TableCell>
                             <TableCell>
-                              <div className="flex items-center gap-2">
-                                <Mail className="h-4 w-4 text-gray-400" />
-                                <span className="font-mono text-sm">{owner.email}</span>
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <Mail className="h-4 w-4 text-gray-400" />
+                                  <span className="font-mono text-sm">{owner.email}</span>
+                                </div>
+                                {owner.phone && (
+                                  <div className="text-xs text-gray-500">{owner.phone}</div>
+                                )}
                               </div>
                             </TableCell>
                             <TableCell>
@@ -526,6 +682,11 @@ const ManageOwners = () => {
                               )}
                             </TableCell>
                             <TableCell>
+                              <div className="text-sm text-gray-600">
+                                {formatLastSeen(owner.last_active_at)}
+                              </div>
+                            </TableCell>
+                            <TableCell>
                               <div className="flex items-center gap-2 text-sm text-gray-600">
                                 <Calendar className="h-4 w-4" />
                                 {formatDate(owner.date_joined || owner.created_at)}
@@ -540,31 +701,48 @@ const ManageOwners = () => {
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="w-48">
                                   <DropdownMenuItem 
-                                    onClick={() => handleSendMessage(owner.full_name || 'Owner', owner.email)}
+                                    onClick={() => handleOpenMessage(owner)}
                                     className="cursor-pointer"
                                   >
-                                    <Mail className="h-4 w-4 mr-2" />
-                                    Send Email
+                                    <MessageSquare className="h-4 w-4 mr-2" />
+                                    Send Message
                                   </DropdownMenuItem>
                                   <DropdownMenuItem 
-                                    onClick={() => handleViewProperties(owner.id)}
+                                    onClick={() => window.open(`/admin/all-properties?owner=${owner.id}`, '_blank')}
                                     className="cursor-pointer"
                                   >
                                     <Building className="h-4 w-4 mr-2" />
                                     View Properties ({propertyCount})
                                   </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
                                   {owner.status === "pending" && (
                                     <DropdownMenuItem 
-                                      onClick={() => handleResendInvitation(owner.id, owner.full_name || 'Owner')}
+                                      onClick={() => handleResendInvitation(owner.email, owner.full_name || 'Owner')}
                                       className="cursor-pointer"
                                     >
                                       <UserPlus className="h-4 w-4 mr-2" />
                                       Resend Invitation
                                     </DropdownMenuItem>
                                   )}
+                                  <DropdownMenuItem 
+                                    onClick={() => handleStatusUpdate(owner.id, owner.status === 'active' ? 'inactive' : 'active')}
+                                    className="cursor-pointer"
+                                  >
+                                    {owner.status === 'active' ? (
+                                      <>
+                                        <X className="h-4 w-4 mr-2" />
+                                        Deactivate
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Check className="h-4 w-4 mr-2" />
+                                        Activate
+                                      </>
+                                    )}
+                                  </DropdownMenuItem>
                                   <DropdownMenuItem asChild>
                                     <Link to={`/admin/users/${owner.id}`} className="cursor-pointer">
-                                      <Check className="h-4 w-4 mr-2" />
+                                      <Eye className="h-4 w-4 mr-2" />
                                       View Profile
                                     </Link>
                                   </DropdownMenuItem>
@@ -590,7 +768,7 @@ const ManageOwners = () => {
                             setSearchQuery("");
                             setStatusFilter("all");
                           }}
-                          className="text-airbnb-primary hover:text-airbnb-primary/80"
+                          className="text-blue-600 hover:text-blue-700"
                         >
                           Clear all filters
                         </Button>
@@ -601,6 +779,69 @@ const ManageOwners = () => {
               )}
             </CardContent>
           </Card>
+
+          {/* Message Dialog */}
+          <Dialog open={isMessageModalOpen} onOpenChange={setIsMessageModalOpen}>
+            <DialogContent className="sm:max-w-[500px]">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5 text-blue-600" />
+                  Send Message to {selectedOwner?.full_name || selectedOwner?.email}
+                </DialogTitle>
+                <DialogDescription>
+                  Send a message to this property owner through the platform.
+                </DialogDescription>
+              </DialogHeader>
+              
+              <form onSubmit={handleSendMessage} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="subject">Subject *</Label>
+                  <Input
+                    id="subject"
+                    value={messageForm.subject}
+                    onChange={(e) => handleMessageInputChange("subject", e.target.value)}
+                    placeholder="Enter message subject"
+                    required
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="message">Message *</Label>
+                  <Textarea
+                    id="message"
+                    value={messageForm.message}
+                    onChange={(e) => handleMessageInputChange("message", e.target.value)}
+                    placeholder="Type your message..."
+                    rows={6}
+                    required
+                  />
+                </div>
+                
+                <DialogFooter>
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={() => setIsMessageModalOpen(false)}
+                    disabled={sendMessageMutation.isPending}
+                  >
+                    Cancel
+                  </Button>
+                  <Button 
+                    type="submit" 
+                    className="bg-blue-600 hover:bg-blue-700"
+                    disabled={sendMessageMutation.isPending}
+                  >
+                    {sendMessageMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4 mr-2" />
+                    )}
+                    Send Message
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
     </Layout>
