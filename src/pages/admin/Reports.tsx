@@ -97,13 +97,13 @@ const Reports = () => {
 
   // Process revenue data
   const revenueData: RevenueData[] = revenueResponse?.data?.map((item: any) => ({
-    month: item.period || item.month || 'Unknown',
+    month: item.period || item.month || '',
     revenue: item.revenue || 0
   })) || [];
 
   // Process booking data
   const bookingData: BookingData[] = revenueResponse?.data?.map((item: any) => ({
-    month: item.period || item.month || 'Unknown',
+    month: item.period || item.month || '',
     bookings: item.bookings_count || item.bookings || 0
   })) || [];
 

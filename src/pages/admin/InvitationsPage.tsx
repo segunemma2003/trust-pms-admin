@@ -177,7 +177,7 @@ const InvitationsPage = () => {
   };
 
   const getInviterName = (invitation: Invitation) => {
-    return invitation.invited_by_name || 'Unknown';
+    return invitation.invited_by_name || 'Admin';
   };
 
   // NEW: Get reminder status for invitation

@@ -307,7 +307,7 @@ const Settings = () => {
                         <div className="space-y-2">
                           <Label>User Type</Label>
                           <Input 
-                            value={currentUserResponse.user_type?.charAt(0).toUpperCase() + currentUserResponse.user_type?.slice(1) || 'Unknown'} 
+                            value={currentUserResponse.user_type?.charAt(0).toUpperCase() + currentUserResponse.user_type?.slice(1) || 'Admin'} 
                             disabled 
                             readOnly 
                             className="bg-gray-50"
