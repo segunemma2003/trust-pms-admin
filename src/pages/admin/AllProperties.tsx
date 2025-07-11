@@ -381,19 +381,19 @@ const AllProperties = () => {
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem>
                                 <Link
-                                  to={`/properties/${property.id}`}
+                                  to={`/admin/properties/${property.id}`}
                                   className="flex items-center gap-2 w-full"
                                 >
                                   <Eye className="h-4 w-4" />
                                   View Details
                                 </Link>
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleDownloadImages(property.id)}>
+                              {/* <DropdownMenuItem onClick={() => handleDownloadImages(property.id)}>
                                 <div className="flex items-center gap-2">
                                   <Download className="h-4 w-4" />
                                   Download Images
                                 </div>
-                              </DropdownMenuItem>
+                              </DropdownMenuItem> */}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>

@@ -403,6 +403,20 @@ class APIClient {
     }>(`/properties/?${params.toString()}`)
   }
 
+
+
+   async getPropertyById(id) {
+    const params = new URLSearchParams()
+    
+    
+    return this.makeRequest<{
+      count: number
+      next?: string
+      previous?: string
+      results: Property[]
+    }>(`/properties/${id}`)
+  }
+
   async getPropertiesByOwner(ownerId: string, status?: string) {
     const params = new URLSearchParams({ owner_id: ownerId })
     if (status) params.append('status', status)
@@ -478,6 +492,8 @@ class APIClient {
       body: JSON.stringify({ status })
     })
   }
+
+
 
   async getBookingStats(timeframe: 'week' | 'month' | 'year' = 'month') {
     return this.makeRequest<any>(`/bookings/stats/?timeframe=${timeframe}`)
@@ -656,7 +672,8 @@ export const userService = {
   getOwners: (params?: Parameters<typeof apiClient.getOwners>[0]) => 
     apiClient.getOwners(params),
   getOwnersWithStats: () => apiClient.getAllOwnersWithStats(),
-  getOwnerStats: (ownerId: string) => apiClient.getOwnerStats(ownerId)
+  getOwnerStats: (ownerId: string) => apiClient.getOwnerStats(ownerId),
+  
 }
 
 export const authService = {
@@ -715,6 +732,9 @@ export const propertyService = {
   
   getPropertiesByStatus: (status: string) => 
     apiClient.getProperties({ status }),
+
+  getPropertyById: (id: string) => 
+    apiClient.getPropertyById( id ),
   
   createProperty: (property: Parameters<typeof apiClient.createProperty>[0]) => 
     apiClient.createProperty(property),

@@ -17,6 +17,9 @@ import AllPropertiesAdmin from "./pages/admin/AllProperties";
 import SuggestedProperties from "./pages/admin/SuggestedProperties";
 import AdminPropertyDetails from "./pages/admin/PropertyDetails";
 import AdminLogin from "./pages/auth/AdminLogin";
+import OwnerDetails from "./pages/admin/OwnerDetails";
+import PropertiesByOwner from "./pages/admin/PropertiesByOwner";
+import PropertyDetails from "./pages/admin/PropertyDetails";
 
 // Scroll to top component
 const ScrollToTop = () => {
@@ -101,6 +104,22 @@ const AppRoutes = () => {
             <AdminDashboard />
           </AdminProtectedRoute>
         } />
+
+         {/* Admin Routes */}
+        <Route path="/admin/owners/:ownerId" element={
+          <AdminProtectedRoute>
+            <OwnerDetails />
+          </AdminProtectedRoute>
+        } />
+
+
+         {/* Admin Routes */}
+        <Route path="/admin/owners/:ownerId/properties" element={
+          <AdminProtectedRoute>
+            <PropertiesByOwner />
+          </AdminProtectedRoute>
+        } />
+
         <Route path="/admin/invitations" element={
           <AdminProtectedRoute>
             <InvitationsPage />
@@ -109,6 +128,12 @@ const AppRoutes = () => {
         <Route path="/admin/properties" element={
           <AdminProtectedRoute>
             <ManageProperties />
+          </AdminProtectedRoute>
+        } />
+
+          <Route path="/admin/properties/:id" element={
+          <AdminProtectedRoute>
+            <PropertyDetails />
           </AdminProtectedRoute>
         } />
         <Route path="/admin/owners" element={

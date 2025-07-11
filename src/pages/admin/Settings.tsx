@@ -225,7 +225,7 @@ const Settings = () => {
             </div>
             
             <div className="mt-4 md:mt-0 flex gap-2">
-              <Button
+              {/* <Button
                 variant="outline"
                 onClick={handleRefreshProfile}
                 disabled={profileLoading}
@@ -233,7 +233,7 @@ const Settings = () => {
               >
                 <RefreshCw className={`h-4 w-4 ${profileLoading ? 'animate-spin' : ''}`} />
                 Refresh
-              </Button>
+              </Button> */}
               <Button
                 className="bg-airbnb-primary hover:bg-airbnb-primary/90 flex items-center gap-2"
                 onClick={handleSaveSettings}

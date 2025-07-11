@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { useQuery } from '@tanstack/react-query';
+import { propertyService } from '@/services/api';
 import {
   Download,
   MapPin,
@@ -62,26 +64,21 @@ const ImageGallery = ({ images }: { images: string[] }) => {
 const PropertyDetails = () => {
   const { id } = useParams<{ id: string }>();
   const [activeTab, setActiveTab] = useState("details");
-  const [property, setProperty] = useState<any>(null);
+  // const [property, setProperty] = useState<any>(null);
   const { user } = useAuth();
 
-  useEffect(() => {
-    const fetchProperty = async () => {
-      const token = localStorage.getItem('access_token');
-      if (!token || !id) return;
-      const response = await fetch(`/api/properties/${id}/`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setProperty(data);
-      }
-    };
-    fetchProperty();
-  }, [id]);
+  
+  const { data: property, isLoading, error } = useQuery({
+  queryKey: ['property', id],
+  queryFn: async () => {
+    const result = await propertyService.getPropertyById(id!);
+    if (result.error) {
+      throw new Error(result.error);
+    }
+    return result.data;
+  },
+  enabled: !!id,
+});
 
   if (!property) {
     return <div className="p-6">Loading property...</div>;
@@ -99,7 +96,7 @@ const PropertyDetails = () => {
               className="flex items-center gap-1 mb-4"
               asChild
             >
-              <Link to="/admin/properties">
+              <Link to="/admin/all-properties">
                 <ArrowLeft className="h-4 w-4" />
                 Back to Properties
               </Link>
@@ -169,8 +166,8 @@ const PropertyDetails = () => {
             <TabsList className="grid w-full grid-cols-2 md:grid-cols-4">
               <TabsTrigger value="details">Details</TabsTrigger>
               <TabsTrigger value="images">Images</TabsTrigger>
-              <TabsTrigger value="trust-levels">Trust Levels</TabsTrigger>
-              <TabsTrigger value="bookings">Bookings</TabsTrigger>
+              {/* <TabsTrigger value="trust-levels">Trust Levels</TabsTrigger> */}
+              {/* <TabsTrigger value="bookings">Bookings</TabsTrigger> */}
             </TabsList>
             
             <TabsContent value="details" className="space-y-4">
@@ -225,18 +222,26 @@ const PropertyDetails = () => {
             </TabsContent>
             
             <TabsContent value="images">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Property Images</CardTitle>
-                  <CardDescription>
-                    View and download all property images
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ImageGallery images={["image1.jpg", "image2.jpg", "image3.jpg"]} />
-                </CardContent>
-              </Card>
-            </TabsContent>
+  <Card>
+    <CardHeader>
+      <CardTitle>Property Images</CardTitle>
+      <CardDescription>
+        View and download all property images
+      </CardDescription>
+    </CardHeader>
+    <CardContent>
+      {property.images && property.images.length > 0 ? (
+        <ImageGallery 
+          images={property.images.map((img: any) => img.image_url)} 
+        />
+      ) : (
+        <div className="text-center py-8 text-gray-500">
+          No images available for this property
+        </div>
+      )}
+    </CardContent>
+  </Card>
+</TabsContent>
             
             <TabsContent value="trust-levels">
               <Card>
