@@ -63,7 +63,13 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { userService, analyticsService, invitationService, propertyService } from "@/services/api";
+import type { User as UserType } from "@/services/api";
 import { usePropertiesByOwner } from "@/hooks/useQueries"; // Import the existing hook
+
+// Define the extended user type with properties count
+interface UserWithPropertiesCount extends UserType {
+  properties_count: number;
+}
 
 const ManageOwners = () => {
   const [searchQuery, setSearchQuery] = useState("");
@@ -93,11 +99,9 @@ const ManageOwners = () => {
       if (result.error) {
         throw new Error(result.error);
       }
-       return result.data;
+      return result.data;
     },
   });
-
-   
 
   // Get dashboard metrics for stats
   const { 
@@ -114,24 +118,23 @@ const ManageOwners = () => {
     },
   });
 
-  // Get properties for selected owner (for details modal)
-  const { 
-    data: selectedOwnerProperties, 
-    isLoading: propertiesLoading 
-  } = usePropertiesByOwner(selectedOwner?.id);
-
-  // Process owners data
-  const owners = ownersResponse || [];
-  console.log("i ame ");
- 
-
+  // Process owners data - handle both array and paginated response
+  const owners: UserType[] = useMemo(() => {
+    if (!ownersResponse) return [];
+    
+    // Handle both direct array and paginated response
+    if (Array.isArray(ownersResponse)) {
+      return ownersResponse;
+    } else if (ownersResponse.results) {
+      return ownersResponse.results;
+    }
+    
+    return [];
+  }, [ownersResponse]);
 
   const [propertyCounts, setPropertyCounts] = useState<Record<string, number>>({});
 
-
-    useEffect(() => {
-   console.log("sdifhogjkf");
-   console.log(owners);
+  useEffect(() => {
     if (!owners?.length) return;
 
     const fetchCounts = async () => {
@@ -142,7 +145,6 @@ const ManageOwners = () => {
         owners.map(async (owner) => {
           try {
             const result = await propertyService.getPropertiesByOwner(owner.id);
-            console.log(result);
             counts[owner.id] = result.data?.results?.length || 0;
           } catch (error) {
             console.error(`Failed to fetch properties for owner ${owner.id}:`, error);
@@ -157,12 +159,11 @@ const ManageOwners = () => {
     fetchCounts();
   }, [owners]);
 
-
-    const ownersWithCounts = useMemo(() => {
-    return owners?.map(owner => ({
+  const ownersWithCounts = useMemo(() => {
+    return owners.map(owner => ({
       ...owner,
       properties_count: propertyCounts[owner.id] || 0
-    })) || [];
+    }));
   }, [owners, propertyCounts]);
   
   // Use dashboard metrics for stats
@@ -174,7 +175,7 @@ const ManageOwners = () => {
   };
 
   // Filter owners based on search and status
-  const filteredOwners = ownersWithCounts.filter((owner: any) => {
+  const filteredOwners = ownersWithCounts.filter((owner: UserWithPropertiesCount) => {
     const matchesSearch = searchQuery === "" || 
       owner.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       owner.email.toLowerCase().includes(searchQuery.toLowerCase());
@@ -257,13 +258,6 @@ const ManageOwners = () => {
       default:
         return "bg-gray-100 text-gray-800 hover:bg-gray-200";
     }
-  };
-
-  // Get owner property count from API data
-  const getOwnerPropertyCount = (ownerId: string) => {
-    // This would be calculated from the properties API response
-    // For now, we'll use a placeholder or you can implement this properly
-    return selectedOwnerProperties?.results?.length || 0;
   };
 
   const loading = ownersLoading || metricsLoading;
@@ -448,8 +442,8 @@ const ManageOwners = () => {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredOwners.map((owner: any) => {
-                       const propertyCount = owner.properties_count;
+                      {filteredOwners.map((owner: UserWithPropertiesCount) => {
+                        const propertyCount = owner.properties_count;
                         
                         return (
                           <TableRow key={owner.id}>
@@ -472,20 +466,20 @@ const ManageOwners = () => {
                                 <span className="font-mono text-sm">{owner.email}</span>
                               </div>
                             </TableCell>
-                             <TableCell>
-                                <div className="flex items-center gap-2">
-                                  <Building className="h-4 w-4 text-gray-400" />
-                                  <span className="font-semibold">
-                                    {owner.properties_count}
-                                    {propertyCounts[owner.id] === undefined && (
-                                      <Loader2 className="h-3 w-3 ml-1 animate-spin inline" />
-                                    )}
-                                  </span>
-                                  <span className="text-sm text-gray-500">
-                                    {owner.properties_count === 1 ? 'property' : 'properties'}
-                                  </span>
-                                </div>
-                              </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Building className="h-4 w-4 text-gray-400" />
+                                <span className="font-semibold">
+                                  {owner.properties_count}
+                                  {propertyCounts[owner.id] === undefined && (
+                                    <Loader2 className="h-3 w-3 ml-1 animate-spin inline" />
+                                  )}
+                                </span>
+                                <span className="text-sm text-gray-500">
+                                  {owner.properties_count === 1 ? 'property' : 'properties'}
+                                </span>
+                              </div>
+                            </TableCell>
                             <TableCell>
                               <Badge className={getStatusBadgeClass(owner.status)}>
                                 {owner.status.charAt(0).toUpperCase() + owner.status.slice(1)}
@@ -494,7 +488,7 @@ const ManageOwners = () => {
                             <TableCell>
                               <div className="flex items-center gap-2 text-sm text-gray-600">
                                 <Calendar className="h-4 w-4" />
-                                {formatDate(owner.date_joined || owner.created_at)}
+                                {formatDate(owner.date_joined || owner.created_at || '')}
                               </div>
                             </TableCell>
                             <TableCell className="text-right">
@@ -505,24 +499,14 @@ const ManageOwners = () => {
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="w-48">
-                                 
                                   <DropdownMenuItem 
-                                   
                                     className="cursor-pointer"
                                   >
-                                    {/* /admin/owners/:ownerId/properties */}
-                                    <Link to={`/admin/owners/${owner.id}/properties`} className="cursor-pointer">
-                                    <Building className="h-4 w-4 mr-2" />
+                                    <Link to={`/admin/owners/${owner.id}/properties`} className="cursor-pointer flex items-center w-full">
+                                      <Building className="h-4 w-4 mr-2" />
                                       View Properties ({propertyCount})
-                                      </Link>
-                                  </DropdownMenuItem>
-                      
-                                  {/* <DropdownMenuItem asChild>
-                                    <Link to={`/admin/owners/${owner.id}`} className="cursor-pointer">
-                                      <UserPlus className="h-4 w-4 mr-2" />
-                                      View Profile
                                     </Link>
-                                  </DropdownMenuItem> */}
+                                  </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
                             </TableCell>

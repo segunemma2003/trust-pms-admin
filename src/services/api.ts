@@ -405,17 +405,10 @@ class APIClient {
 
 
 
-   async getPropertyById(id) {
-    const params = new URLSearchParams()
-    
-    
-    return this.makeRequest<{
-      count: number
-      next?: string
-      previous?: string
-      results: Property[]
-    }>(`/properties/${id}`)
-  }
+   async getPropertyById(id: string) {
+  // This should return a single Property, not a paginated response
+  return this.makeRequest<Property>(`/properties/${id}/`)
+}
 
   async getPropertiesByOwner(ownerId: string, status?: string) {
     const params = new URLSearchParams({ owner_id: ownerId })
