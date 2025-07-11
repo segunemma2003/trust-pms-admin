@@ -287,7 +287,7 @@ const AdminDashboard = () => {
             </CardContent>
           </Card>
 
-          <Card>
+          {/* <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-airbnb-light">
                 Monthly Revenue
@@ -301,9 +301,9 @@ const AdminDashboard = () => {
                 </div>
               </div>
             </CardContent>
-          </Card>
+          </Card> */}
 
-          <Card>
+          {/* <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-airbnb-light">
                 Recent Signups
@@ -317,7 +317,7 @@ const AdminDashboard = () => {
                 </div>
               </div>
             </CardContent>
-          </Card>
+          </Card> */}
         </div>
 
         {/* Recent Invitations */}
