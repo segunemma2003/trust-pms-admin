@@ -54,6 +54,19 @@ const AllProperties = () => {
   
   const { user } = useAuth();
 
+
+   const formatStatus = (status?: string) => {
+    if (!status || typeof status !== 'string') return 'Unknown';
+    return status.charAt(0).toUpperCase() + status.slice(1);
+  };
+
+
+  const formatLocation = (city?: string, state?: string) => {
+    const cityText = city || 'Unknown';
+    const stateText = state || 'Unknown';
+    return `${cityText}, ${stateText}`;
+  };
+
   // Fetch properties with current filters
   const fetchProperties = async () => {
     try {
@@ -170,8 +183,10 @@ const AllProperties = () => {
     setProperties(sortedProperties);
   };
 
-  const getStatusBadgeColor = (status: string) => {
-    switch (status) {
+  const getStatusBadgeColor = (status?: string) => {
+    if (!status) return "bg-gray-100 text-gray-800";
+    
+    switch (status.toLowerCase()) {
       case "active":
         return "bg-green-100 text-green-800";
       case "draft":
@@ -182,6 +197,7 @@ const AllProperties = () => {
         return "bg-yellow-100 text-yellow-800";
     }
   };
+
 
   const handleExport = async () => {
     try {
@@ -324,9 +340,9 @@ const AllProperties = () => {
                         Price {sortField === "price_per_night" && (sortDirection === "asc" ? "↑" : "↓")}
                       </TableHead>
                       <TableHead>Details</TableHead>
-                      <TableHead className="cursor-pointer" onClick={() => handleSort("status")}>
+                      {/* <TableHead className="cursor-pointer" onClick={() => handleSort("status")}>
                         Status {sortField === "status" && (sortDirection === "asc" ? "↑" : "↓")}
-                      </TableHead>
+                      </TableHead> */}
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -338,7 +354,7 @@ const AllProperties = () => {
                             {property.images && property.images.length > 0 ? (
                               <img 
                                 src={property.images[0].image_url} 
-                                alt={property.title} 
+                                alt={property.title || 'Untitled Property'}
                                 className="w-10 h-10 rounded-md object-cover" 
                               />
                             ) : (
@@ -347,30 +363,31 @@ const AllProperties = () => {
                               </div>
                             )}
                             <div>
-                              <div className="font-medium">{property.title}</div>
-                              <div className="text-sm text-gray-500">{property.bedrooms} bed, {property.bathrooms} bath</div>
+                              <div className="font-medium">{property.title || 'Untitled Property'}</div>
+                             {property.bedrooms || 0} bed, {property.bathrooms || 0} bath
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell>{property.owner_name}</TableCell>
-                        <TableCell className="flex items-center gap-1">
-                          <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
-                          <span>{property.city}, {property.state}</span>
-                        </TableCell>
+                        <TableCell>{property.owner_name || 'Unknown Owner'}</TableCell>
+
+                         <TableCell className="flex items-center gap-1">
+                            <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span>{formatLocation(property.city, property.state)}</span>
+                          </TableCell>
                         <TableCell>
-                          {property.price_per_night ? `$${property.price_per_night}/night` : 'N/A'}
+                         {property.display_price ? `${property.display_price}/night` : 'N/A'}
                         </TableCell>
-                        <TableCell>
+                          <TableCell>
                           <div className="text-sm">
-                            <div>{property.max_guests} guests max</div>
-                            <div className="text-gray-500">{property.booking_count} bookings</div>
+                            <div>{property.max_guests || 0} guests max</div>
+                            <div className="text-gray-500">{property.booking_count || 0} bookings</div>
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <Badge className={getStatusBadgeColor(property.status)}>
-                            {property.status.charAt(0).toUpperCase() + property.status.slice(1)}
+                        {/* <TableCell>
+                           <Badge className={getStatusBadgeColor(property.status)}>
+                            {formatStatus(property.status)}
                           </Badge>
-                        </TableCell>
+                        </TableCell> */}
                         <TableCell className="text-right">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
