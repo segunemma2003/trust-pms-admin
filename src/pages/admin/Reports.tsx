@@ -26,11 +26,6 @@ import { analyticsService, propertyService, type Property } from "@/services/api
 
 const COLORS = ["#FF5A5F", "#00A699", "#FC642D", "#484848", "#767676"];
 
-interface RevenueData {
-  month: string;
-  revenue: number;
-}
-
 interface BookingData {
   month: string;
   bookings: number;
@@ -44,17 +39,17 @@ interface PropertyData {
 const Reports = () => {
   const { user } = useAuth();
   
-  // Query for revenue analytics
+  // Query for booking data
   const { 
-    data: revenueResponse, 
-    isLoading: revenueLoading, 
-    isError: revenueError,
-    error: revenueErrorMessage,
-    refetch: refetchRevenue
+    data: bookingResponse, 
+    isLoading: bookingLoading, 
+    isError: bookingError,
+    error: bookingErrorMessage,
+    refetch: refetchBookings
   } = useQuery({
-    queryKey: ['analytics', 'revenue'],
+    queryKey: ['analytics', 'bookings'],
     queryFn: async () => {
-      const result = await analyticsService.getRevenueAnalytics({
+      const result = await analyticsService.getBookingAnalytics({
         start_date: '2025-01-01',
         end_date: '2025-12-31',
         group_by: 'month'
@@ -95,14 +90,8 @@ const Reports = () => {
     retry: 2,
   });
 
-  // Process revenue data
-  const revenueData: RevenueData[] = revenueResponse?.data?.map((item: any) => ({
-    month: item.period || item.month || '',
-    revenue: item.revenue || 0
-  })) || [];
-
   // Process booking data
-  const bookingData: BookingData[] = revenueResponse?.data?.map((item: any) => ({
+  const bookingData: BookingData[] = bookingResponse?.data?.map((item: any) => ({
     month: item.period || item.month || '',
     bookings: item.bookings_count || item.bookings || 0
   })) || [];
@@ -153,12 +142,12 @@ const Reports = () => {
     }));
   })();
 
-  const isLoading = revenueLoading || propertiesLoading;
-  const hasError = revenueError || propertiesError;
-  const errorMessage = revenueErrorMessage?.message || propertiesErrorMessage?.message;
+  const isLoading = bookingLoading || propertiesLoading;
+  const hasError = bookingError || propertiesError;
+  const errorMessage = bookingErrorMessage?.message || propertiesErrorMessage?.message;
 
   const handleRefresh = () => {
-    refetchRevenue();
+    refetchBookings();
     refetchProperties();
   };
 
@@ -212,7 +201,6 @@ const Reports = () => {
   }
 
   // Calculate summary metrics from the data
-  const totalRevenue = revenueData.reduce((sum, item) => sum + (item.revenue || 0), 0);
   const totalBookings = bookingData.reduce((sum, item) => sum + (item.bookings || 0), 0);
   const totalProperties = propertiesData.reduce((sum, item) => sum + (item.count || 0), 0);
 
@@ -269,23 +257,6 @@ const Reports = () => {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Total Revenue
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  ${totalRevenue.toLocaleString()}
-                </div>
-                <div className="flex items-center text-sm text-green-600 mt-1">
-                  <ArrowUpRight className="h-4 w-4 mr-1" />
-                  <span>From {revenueData.length} months</span>
-                </div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
                   Total Bookings
                 </CardTitle>
               </CardHeader>
@@ -313,52 +284,11 @@ const Reports = () => {
             </Card>
           </div>
           
-          <Tabs defaultValue="revenue" className="mt-6">
+          <Tabs defaultValue="bookings" className="mt-6">
             <TabsList>
-              <TabsTrigger value="revenue">Revenue</TabsTrigger>
               <TabsTrigger value="bookings">Bookings</TabsTrigger>
               <TabsTrigger value="properties">Properties</TabsTrigger>
             </TabsList>
-            
-            <TabsContent value="revenue" className="mt-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Revenue Overview</CardTitle>
-                  <CardDescription>Monthly revenue trends</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {revenueData.length > 0 ? (
-                    <div className="h-80">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={revenueData}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="month" />
-                          <YAxis />
-                          <Tooltip 
-                            formatter={(value) => [`${Number(value).toLocaleString()}`, 'Revenue']} 
-                          />
-                          <Legend />
-                          <Line 
-                            type="monotone" 
-                            dataKey="revenue" 
-                            stroke="#FF5A5F" 
-                            strokeWidth={2}
-                            dot={{ fill: '#FF5A5F' }}
-                          />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  ) : (
-                    <div className="h-80 flex items-center justify-center text-gray-500">
-                      <div className="text-center">
-                        <p className="text-lg mb-2">No revenue data available</p>
-                        <p className="text-sm">Revenue analytics will appear here when data is available</p>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
             
             <TabsContent value="bookings" className="mt-4">
               <Card>
