@@ -306,8 +306,8 @@ class APIClient {
     return this.makeRequest<User>('/users/profile/')
   }
 
-  async updateProfile(updates: { full_name?: string; phone?: string; status?: string }) {
-    return this.makeRequest<User>('/users/update_profile/', {
+  async updateProfile(updates: { full_name?: string; phone?: string; email?: string }) {
+    return this.makeRequest<User>('/accounts/profile/', {
       method: 'PATCH',
       body: JSON.stringify(updates)
     })

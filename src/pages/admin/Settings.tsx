@@ -248,10 +248,10 @@ const Settings = () => {
             <TabsList className="grid w-full grid-cols-2 md:grid-cols-6">
               <TabsTrigger value="profile">Profile</TabsTrigger>
               <TabsTrigger value="general">General</TabsTrigger>
-              <TabsTrigger value="security">Security</TabsTrigger>
-              <TabsTrigger value="notifications">Notifications</TabsTrigger>
+              {/* <TabsTrigger value="security">Security</TabsTrigger> */}
+              {/* <TabsTrigger value="notifications">Notifications</TabsTrigger> */}
               <TabsTrigger value="integrations">Integrations</TabsTrigger>
-              <TabsTrigger value="billing">Billing</TabsTrigger>
+              {/* <TabsTrigger value="billing">Billing</TabsTrigger> */}
             </TabsList>
             
             <TabsContent value="profile" className="mt-6 space-y-4">
@@ -422,7 +422,7 @@ const Settings = () => {
                   </div>
                 </CardContent>
               </Card>
-              
+              {/*
               <Card>
                 <CardHeader>
                   <CardTitle>Features & Restrictions</CardTitle>
@@ -454,8 +454,10 @@ const Settings = () => {
                   </div>
                 </CardContent>
               </Card>
+              */}
             </TabsContent>
             
+            {/*
             <TabsContent value="security" className="mt-6 space-y-4">
               <Card>
                 <CardHeader>
@@ -499,7 +501,9 @@ const Settings = () => {
                 </CardFooter>
               </Card>
             </TabsContent>
+            */}
             
+            {/*
             <TabsContent value="notifications" className="mt-6 space-y-4">
               <Card>
                 <CardHeader>
@@ -543,6 +547,7 @@ const Settings = () => {
                 </CardContent>
               </Card>
             </TabsContent>
+            */}
             
             <TabsContent value="integrations" className="mt-6 space-y-4">
               <Card>
@@ -585,6 +590,7 @@ const Settings = () => {
               </Card>
             </TabsContent>
             
+            {/*
             <TabsContent value="billing" className="mt-6 space-y-4">
               <Card>
                 <CardHeader>
@@ -627,6 +633,7 @@ const Settings = () => {
                 </CardContent>
               </Card>
             </TabsContent>
+            */}
           </Tabs>
         </div>
       </div>
